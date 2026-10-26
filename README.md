@@ -1,8 +1,16 @@
 # ¡Sin Frenos! — Torito en bajada
 
-## Estado para retomar — 25/10/2026
+## Estado para retomar — 26/10/2026
 
-**Versión actual: v1.1.0**, commit `496cdae`, publicada en GitHub (`main`). Falta probarla en un celular real.
+**Versión actual: v1.2.0**, publicada en GitHub (`main`). Falta probarla en un celular real.
+
+### Novedades de v1.2.0
+
+- **Carrera sin acelerador:** el torito acelera solo; el freno corta la aceleración.
+- **Choques con los rivales:** de costado se empujan hacia afuera; por detrás, el de atrás frena y empuja al de adelante. Hay daño, pero no se pierde vida.
+- **Agarre en curvas (solo Carrera):** la moto sigue el 80 % de la curva y, sin timón, se alinea con la calle (`ASISTE_CURVA` y `AGARRE_CARRERA` en `vehiculo.js`).
+- **Celular:** el cuarto inferior de la pantalla es zona de freno; los botones FRENO se ven igual y se iluminan. Se quitaron el giroscopio, *centrar*, *Recentrar timón* e *Invertir giro*.
+- **Vibración Suave más fuerte:** `0.2 + 0.4 · v/25` (antes `0.15 + 0.35`), cerca del 60 % de Normal a toda velocidad.
 
 ### Novedades de v1.0.1 y v1.1.0
 
