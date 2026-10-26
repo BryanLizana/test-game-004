@@ -90,6 +90,60 @@ rayas.width = 128; rayas.height = 16;
 const texRayas = new THREE.CanvasTexture(rayas);
 texRayas.colorSpace = THREE.SRGBColorSpace;
 
+// ---------- Suciedad de fachadas: manchas y chorreados según la posición en el mundo ----------
+// Se suma a la textura de cada casa sin reemplazarla: dos casas con la misma fachada se ensucian distinto.
+function texturaSuciedad() {
+  const N = 256, c = document.createElement("canvas");
+  c.width = c.height = N;
+  const g = c.getContext("2d"), img = g.createImageData(N, N);
+  // Ruido de valor periódico (se repite sin costuras) en varias escalas
+  const azar = (x, y, p) => { const h = Math.sin(((x % p) + p) % p * 127.1 + (((y % p) + p) % p) * 311.7) * 43758.5453; return h - Math.floor(h); };
+  const ruido = (x, y, p) => {
+    const xi = Math.floor(x), yi = Math.floor(y), fx = x - xi, fy = y - yi;
+    const sx = fx * fx * (3 - 2 * fx), sy = fy * fy * (3 - 2 * fy);
+    const a = azar(xi, yi, p), b = azar(xi + 1, yi, p), cc = azar(xi, yi + 1, p), d = azar(xi + 1, yi + 1, p);
+    return a + (b - a) * sx + (cc - a) * sy + (a - b - cc + d) * sx * sy;
+  };
+  const chorreo = new Float32Array(N);
+  for (let x = 0; x < N; x++) chorreo[x] = Math.pow(ruido(x / 6, 0.5, N / 6), 3);
+  for (let y = 0; y < N; y++) for (let x = 0; x < N; x++) {
+    let v = 0, amp = 0.5, f = 4;
+    for (let o = 0; o < 4; o++) { v += ruido((x / N) * f, (y / N) * f, f) * amp; amp *= 0.5; f *= 2; }
+    // manchas suaves + chorreados verticales de garúa
+    let k = 0.78 + (v - 0.5) * 0.7 - chorreo[x] * 0.35 * (0.6 + 0.4 * ruido(x / 3, y / 40, N / 3));
+    k = Math.max(0.35, Math.min(1.08, k));
+    const i = (y * N + x) * 4;
+    img.data[i] = img.data[i + 1] = img.data[i + 2] = Math.round(Math.min(1, k) * 255);
+    img.data[i + 3] = 255;
+  }
+  g.putImageData(img, 0, 0);
+  const t = new THREE.CanvasTexture(c);
+  t.wrapS = t.wrapT = THREE.RepeatWrapping;
+  return t;
+}
+const uniformSuciedad = { value: texturaSuciedad() };
+function ensuciar(material) {
+  material.customProgramCacheKey = () => "suciedad";
+  material.onBeforeCompile = (sh) => {
+    sh.uniforms.mapaSuciedad = uniformSuciedad;
+    sh.vertexShader = "varying vec3 vMundo;\n" + sh.vertexShader.replace("#include <begin_vertex>",
+      "#include <begin_vertex>\n vMundo = (modelMatrix * vec4(transformed, 1.0)).xyz;");
+    sh.fragmentShader = "uniform sampler2D mapaSuciedad;\nvarying vec3 vMundo;\n" + sh.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>
+      // dos muestras cruzadas para que funcione en paredes con cualquier orientación
+      float s1 = texture2D(mapaSuciedad, vec2(vMundo.x, vMundo.y * 0.8) * 0.09).r;
+      float s2 = texture2D(mapaSuciedad, vec2(vMundo.z + 17.0, vMundo.y * 0.8) * 0.09).r;
+      float s3 = texture2D(mapaSuciedad, (vMundo.xz + vMundo.zx * 0.5) * 0.021).r;
+      float suc = clamp(s1 * s2 * 1.25, 0.45, 1.05) * mix(0.82, 1.08, s3);
+      #ifdef USE_MAP
+        float pie = mix(0.62, 1.0, smoothstep(0.0, 0.16, vMapUv.y));   // polvo y humedad al pie del muro
+      #else
+        float pie = 1.0;
+      #endif
+      diffuseColor.rgb *= suc * pie;`);
+  };
+  return material;
+}
+
 const mat = {
   asfalto: est(0x77777a),
   vereda: est(0xb9b2a6, { side: THREE.DoubleSide }),
@@ -159,6 +213,8 @@ textura(mat.frazada, "assets/tex/frazadas.png", false);
 textura(mat.cilindro, "assets/tex/bidon.jpg");
 textura(mat.cerro, "assets/tex/cerro.jpg");
 mat.fachadas.forEach((m, i) => textura(m, `assets/tex/fachada${(i % 4) + 1}.jpg`));
+mat.fachadas.forEach(ensuciar);
+ensuciar(mat.muroLateral);
 mat.charco.visible = false;
 
 // Entorno 360° para reflejos reales en cromo, vidrio y vinilo
