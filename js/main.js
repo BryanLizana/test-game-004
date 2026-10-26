@@ -1,11 +1,12 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js?v=0.7.2";
-import { Vehiculo } from "./vehiculo.js?v=0.7.2";
-import { Trafico } from "./trafico.js?v=0.7.2";
-import { Controles } from "./controles.js?v=0.7.2";
-import { Sonido } from "./audio.js?v=0.7.2";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=0.7.2";
+import { Pista, ANCHO } from "./pista.js?v=1.0.0";
+import { Vehiculo } from "./vehiculo.js?v=1.0.0";
+import { Trafico } from "./trafico.js?v=1.0.0";
+import { Controles } from "./controles.js?v=1.0.0";
+import { Sonido } from "./audio.js?v=1.0.0";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.0.0";
+import { crearLetreros } from "./ambiente.js?v=1.0.0";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -157,8 +158,20 @@ const mat = {
   asfalto: est(0x77777a),
   vereda: est(0xb9b2a6, { side: THREE.DoubleSide }),
   bache: est(0x2c2a27, { roughness: 1, polygonOffset: true, polygonOffsetFactor: -2, polygonOffsetUnits: -2 }),
-  // 4 fachadas x 3 tintes de pintura (blanco, cálido, frío): índice = textura + 4 * tinte
-  fachadas: [0xffffff, 0xf2d6c2, 0xd4deec].flatMap((tinte) => [0xb5653d, 0xd9b04a, 0x3f9fb0, 0xe39a8f].map((base) => {
+  reparacion: est(0x4c4a48, { side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -2 }),
+  grieta: est(0x292825, { side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3 }),
+  huella: est(0x282725, { transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide,
+    polygonOffset: true, polygonOffsetFactor: -3 }),
+  paredes: [0xd7bf8c, 0xa1b9ad, 0xc9a39b, 0xaabcc4, 0xd6cdad, 0xb99a77].map((tinte) => {
+    const m = est(tinte, { side: THREE.DoubleSide });
+    m.userData.tinte = tinte;
+    return m;
+  }),
+  letreros: crearLetreros(),
+  porton: est(0x728585, { side: THREE.DoubleSide }),
+  grafiti: est(0xffffff, { side: THREE.DoubleSide }),
+  // Ladrillo y fachadas pintadas, con seis tintes para diferenciar barrios.
+  fachadas: [0xffffff, 0xf2d6c2, 0xd4deec, 0xa9d5c8, 0xf1d184, 0xe5b3a4].flatMap((tinte) => [0xb5653d, 0xd9b04a, 0x3f9fb0, 0xe39a8f].map((base) => {
     const m = est(new THREE.Color(base).multiply(new THREE.Color(tinte)), { side: THREE.DoubleSide });
     m.userData.tinte = tinte;
     return m;
@@ -209,6 +222,14 @@ const mat = {
   geoRompemuelle: new THREE.BoxGeometry(ANCHO, 0.12, 0.7),
 };
 textura(mat.asfalto, "assets/tex/asfalto.jpg");
+mat.reparacion.userData.tinte = 0x666a70;
+textura(mat.reparacion, "assets/tex/asfalto.jpg");
+mat.grieta.userData.tinte = 0x292b2e;
+textura(mat.grieta, "assets/tex/asfalto.jpg");
+mat.porton.userData.tinte = 0x69817d;
+textura(mat.porton, "assets/tex/calamina.jpg");
+textura(mat.grafiti, "assets/tex/grafiti-lima-v1.jpg", false);
+mat.paredes.forEach((m) => { textura(m, "assets/tex/vereda.jpg"); ensuciar(m); });
 textura(mat.vereda, "assets/tex/vereda.jpg");
 textura(mat.tierra, "assets/tex/tierra.jpg");
 textura(mat.pirca, "assets/tex/pirca2.jpg", true, "assets/tex/pirca.jpg");
@@ -240,18 +261,13 @@ cargador.load("assets/tex/entorno.jpg", (t) => {
 
 // Cielo panorámico con Lima al fondo
 const cieloMat = new THREE.MeshBasicMaterial({ color: COLOR_NIEBLA, side: THREE.BackSide, fog: false, depthWrite: false });
-// Cilindro alrededor de la cámara: el horizonte de la imagen queda un poco bajo la vista
-const ALTO_CIELO = 800, BAJO_CIELO = 230;
-const cielo = new THREE.Mesh(new THREE.CylinderGeometry(800, 800, ALTO_CIELO, 32, 1, true), cieloMat);
+// La esfera cubre también arriba y abajo: no deja huecos al girar o mirar al cerro.
+const geoCielo = new THREE.SphereGeometry(900, 64, 40);
+const uvCielo = geoCielo.getAttribute("uv");
+for (let i = 0; i < uvCielo.count; i++) uvCielo.setY(i, Math.pow(uvCielo.getY(i), 1.5));
+const cielo = new THREE.Mesh(geoCielo, cieloMat);
 cielo.renderOrder = -1;
 escena.add(cielo);
-// Debajo del panorama: la ciudad brumosa (desde el cerro se mira muy hacia abajo)
-const COLOR_CIUDAD = 0x5f5858;          // promedio del borde inferior de cielo.jpg
-const fondoMat = new THREE.MeshBasicMaterial({ color: COLOR_CIUDAD, side: THREE.BackSide, fog: false, depthWrite: false });
-const fondo = new THREE.Mesh(new THREE.CylinderGeometry(800, 800, 1200, 32, 1, false), fondoMat);
-fondo.position.y = -ALTO_CIELO / 2 - 600;
-fondo.renderOrder = -1;
-cielo.add(fondo);
 textura(cieloMat, "assets/tex/cielo.jpg", false);
 
 // ---------- Torito del jugador ----------
@@ -265,10 +281,11 @@ let noche = false;
 try { noche = localStorage.getItem("noche") === "1"; } catch (_) { /* sin almacenamiento */ }
 
 const NIVELES_VIBRACION = ["Normal", "Suave", "Mínima", "Apagada"];
-let nivelVibracion = 0;
+let nivelVibracion = 1;
 try {
-  const guardado = Number(localStorage.getItem("nivelVibracion"));
-  if (Number.isInteger(guardado) && guardado >= 0 && guardado < NIVELES_VIBRACION.length) nivelVibracion = guardado;
+  const almacenado = localStorage.getItem("nivelVibracion");
+  const guardado = Number(almacenado);
+  if (almacenado !== null && Number.isInteger(guardado) && guardado >= 0 && guardado < NIVELES_VIBRACION.length) nivelVibracion = guardado;
 } catch (_) { /* sin almacenamiento */ }
 
 function factorVibracion(v) {
@@ -316,7 +333,7 @@ const ciudadNoche = (() => {
   const c = new THREE.Color();
   for (let i = 0; i < n; i++) {
     const a = Math.random() * Math.PI * 2, r = 480 + Math.random() * 380;
-    pos.set([Math.cos(a) * r, -ALTO_CIELO / 2 + BAJO_CIELO - 40 - Math.random() * 160 * (r / 860), Math.sin(a) * r], i * 3);
+    pos.set([Math.cos(a) * r, -40 - Math.random() * 160 * (r / 860), Math.sin(a) * r], i * 3);
     c.setHSL(0.09 + Math.random() * 0.05, 0.8, 0.55 + Math.random() * 0.4);
     col.set([c.r, c.g, c.b], i * 3);
   }
@@ -336,7 +353,6 @@ function aplicarHora() {
   escena.fog.far = noche ? 210 : 290;
   cieloMat.userData.tinte = noche ? 0x1a2242 : 0xffffff;
   cieloMat.color.set(cieloMat.map ? cieloMat.userData.tinte : fondoColor);
-  fondoMat.color.set(noche ? 0x05070e : COLOR_CIUDAD);
   hemi.intensity = noche ? 0.32 : hemiDia;
   hemi.color.set(noche ? 0x4a5a8a : 0xdfe6ea);
   sol.intensity = noche ? 0.12 : 1.3;
@@ -424,7 +440,7 @@ function nuevaPartida() {
   pista = new Pista();
   pista.construir(escena, mat);
   vehiculo = new Vehiculo(pista, modoJuego);
-  trafico = new Trafico(escena, pista);
+  trafico = new Trafico(escena, pista, modoJuego);
   tiempoPartida = 0;
   acumulador = 0;
   vidas = VIDAS;
@@ -436,7 +452,7 @@ function nuevaPartida() {
   controles.calibrar();
   colocarTorito(0);
   colocarCamara(0, true);
-  aviso(modoJuego === "carrera" ? "¡Carrera! Acelera y baja hasta la meta" : "¡Se cortó el cable del freno!", 2.5);
+  aviso(modoJuego === "carrera" ? "¡Carrera contra 3 rivales! Acelera hasta la meta" : "¡Se cortó el cable del freno!", 2.5);
 }
 
 // ---------- Gritos del chofer (solo globo de texto) ----------
@@ -554,8 +570,7 @@ function actualizarHud(dt) {
   tHud = 0.1;
   const v = vehiculo;
   textoHud("hud-vel", Math.round(v.kmh));
-  textoHud("hud-dist", `Faltan ${Math.max(0, Math.round(pista.largo - 60 - v.s))} m${modoJuego === "carrera" ? ` · ${tiempoPartida.toFixed(1)} s` : ""}`);
-  $("b-centrar").classList.toggle("oculto", !controles.usandoSensor);
+  textoHud("hud-dist", `${modoJuego === "carrera" ? `${trafico.puesto(v)}/4 · ` : ""}Faltan ${Math.max(0, Math.round(pista.largo - 60 - v.s))} m${modoJuego === "carrera" ? ` · ${tiempoPartida.toFixed(1)} s` : ""}`);
   const barra = (id, pct, invertido) => {
     const b = $(id);
     const ancho = `${Math.max(0, Math.min(100, pct))}%`;
@@ -608,7 +623,6 @@ function bucle(ahora) {
     colocarCamara(dt);
   }
   cielo.position.copy(camara.position);
-  cielo.position.y += ALTO_CIELO / 2 - BAJO_CIELO;
   actualizarLucesPoste(dt);
   if (estado === "jugando") ajustarCalidad(dt);
   renderer.render(escena, camara);
@@ -641,6 +655,8 @@ function dibujarVidas(perdida = -1) {
 }
 
 function perderVida(motivo) {
+  controles.centrarDireccion();
+  vehiculo.giro = 0;
   vidas--;
   dibujarVidas(vidas);
   sonido.golpe(1);
@@ -652,6 +668,7 @@ function perderVida(motivo) {
 
 function revivir() {
   if (estado !== "jugando") return;
+  controles.centrarDireccion();
   const v = vehiculo;
   Object.assign(v, { estado: "ok", motivo: "", psi: 0, d: ANCHO / 4, v: modoJuego === "carrera" ? 0 : 4, h: 0, vy: 0, inclinacion: 0, balanceo: 0, giro: 0 });
   v.dano = Math.min(v.dano, 60);
@@ -666,6 +683,15 @@ function revivir() {
 
 function procesarChoque({ agente, vRel }) {
   if (tInvulnerable > 0) return;
+  if (agente.rival) {
+    vehiculo.v *= 0.88;
+    agente.v *= 0.9;
+    vehiculo.dano += Math.min(6, 1 + vRel * 0.3);
+    vehiculo.sacudida = Math.max(vehiculo.sacudida, 0.5);
+    sonido.golpe(0.3);
+    aviso(`¡Roce con ${agente.nombre}!`, 1);
+    return;
+  }
   if (agente.peaton) {
     if (agente.tipo === "persona") {
       agente.modelo.visible = false;   // salió volando del susto: se va de la escena
@@ -712,7 +738,7 @@ function procesarEventos() {
     } else if (e.tipo === "choque") {
       perderVida(e.motivo);
     } else if (e.tipo === "llegada") {
-      terminar(true, "¡Llegaste a la avenida con vida!");
+      terminar(true, modoJuego === "carrera" ? "¡Carrera terminada!" : "¡Llegaste a la avenida con vida!");
     }
   }
   eventos.length = 0;
@@ -723,6 +749,7 @@ function terminar(gano, motivo) {
   estado = "terminando";
   caidaFinal = !gano;   // al perder la última vida el torito siempre termina volcado
   sonido.claxon(false);
+  const puestoFinal = modoJuego === "carrera" ? trafico.puesto(vehiculo) : 0;
   const metros = Math.round(Math.min(vehiculo.s, pista.largo - 60));
   let record = 0;
   try { record = +(localStorage.getItem(modoJuego === "carrera" ? "recordMetrosCarrera" : "recordMetros") || 0); } catch (_) { /* sin almacenamiento */ }
@@ -732,8 +759,8 @@ function terminar(gano, motivo) {
   tFin = gano ? 0.6 : 1.8;
   mostrarFin = () => {
     estado = "fin";
-    $("fin-titulo").textContent = gano ? "¡LLEGASTE!" : "¡PUM!";
-    $("fin-msg").textContent = motivo;
+    $("fin-titulo").textContent = gano ? (modoJuego === "carrera" ? puestoFinal === 1 ? "¡GANASTE!" : "¡META!" : "¡LLEGASTE!") : "¡PUM!";
+    $("fin-msg").textContent = modoJuego === "carrera" && gano ? `Puesto ${puestoFinal} de 4 · ${motivo}` : motivo;
     $("fin-resumen").innerHTML =
       `Recorrido: <b>${metros} m</b> de ${Math.round(pista.largo - 60)} m<br>` +
       `Tiempo: <b>${tiempoPartida.toFixed(1)} s</b><br>` +
@@ -788,7 +815,7 @@ function mostrarModo() {
   const carrera = modoJuego === "carrera";
   $("btn-modo").textContent = `Modo: ${carrera ? "Carrera" : "Sin frenos"}`;
   $("b-acelerador").classList.toggle("oculto", !carrera);
-  $("ayuda-controles").innerHTML = `<b>Celular:</b> toca la mitad izquierda o derecha para girar, o inclina el teléfono. Pedales abajo.<br><b>PC:</b> ← → / A D dirección · ${carrera ? "W / ↑ acelerar · S / ↓ / Espacio frenar" : "S / ↓ / Espacio freno gastado"} · H claxon · C cámara`;
+  $("ayuda-controles").innerHTML = `${carrera ? "<b>Carrera:</b> compite contra 3 rivales, sin desmontes ni peatones.<br>" : ""}<b>Celular:</b> toca cada mitad para girar, o inclina el teléfono. Pedales abajo.<br><b>PC:</b> ← → / A D dirección · ${carrera ? "W / ↑ acelerar · S / ↓ / Espacio frenar" : "S / ↓ / Espacio freno gastado"} · H claxon · C cámara`;
 }
 $("btn-modo").addEventListener("click", () => {
   modoJuego = modoJuego === "carrera" ? "sinFrenos" : "carrera";
@@ -822,7 +849,12 @@ function pausar() {
 $("btn-pausa").addEventListener("click", pausar);
 $("btn-cam").addEventListener("click", alternarCamara);
 $("btn-seguir").addEventListener("click", pausar);
-$("btn-calibrar-p").addEventListener("click", () => { controles.calibrar(); pausar(); });
+function centrarTimon() {
+  controles.calibrar();
+  if (vehiculo) vehiculo.giro = 0;
+  aviso("Timón centrado", 1);
+}
+$("btn-calibrar-p").addEventListener("click", () => { centrarTimon(); pausar(); });
 $("btn-salir").addEventListener("click", () => {
   estado = "inicio";
   tRevivir = tFin = 0; mostrarFin = null;
@@ -862,7 +894,12 @@ for (const lado of ["izq", "der"]) {
     controles.botones[lado] = activos.size > 0;
     $("b-" + lado).classList.toggle("activo", activos.size > 0);
   };
-  controles.soltadores.push(() => { activos.clear(); actualizar(); });
+  const soltarDireccion = () => { activos.clear(); actualizar(); };
+  controles.soltadores.push(soltarDireccion);
+  controles.soltadoresDireccion.push(soltarDireccion);
+  const soltarPuntero = (e) => { activos.delete(e.pointerId); actualizar(); };
+  addEventListener("pointerup", soltarPuntero);
+  addEventListener("pointercancel", soltarPuntero);
   for (const id of ["zona-" + lado, "b-" + lado]) {
     const el = $(id);
     el.addEventListener("pointerdown", (e) => {
@@ -873,14 +910,22 @@ for (const lado of ["izq", "der"]) {
       actualizar();
     });
     for (const evento of ["pointerup", "pointercancel", "lostpointercapture"]) {
-      el.addEventListener(evento, (e) => { activos.delete(e.pointerId); actualizar(); });
+      el.addEventListener(evento, soltarPuntero);
     }
   }
 }
 controles.botonMantener($("b-acelerador"), () => (controles.botones.acelerador = true), () => (controles.botones.acelerador = false));
-controles.botonMantener($("b-freno"), () => (controles.botones.freno = true), () => (controles.botones.freno = false));
-controles.botonMantener($("b-claxon"), () => controles.alClaxon(true), () => controles.alClaxon(false));
-controles.botonMantener($("b-centrar"), () => { controles.calibrar(); aviso("Timón centrado", 1); });
+// Los dos frenos comparten estado sin que soltar uno cancele el otro.
+const frenosPresionados = new Set();
+controles.soltadores.push(() => { frenosPresionados.clear(); controles.botones.freno = false; });
+for (const id of ["b-freno", "b-freno-izq"]) {
+  controles.botonMantener($(id), () => {
+    frenosPresionados.add(id); controles.botones.freno = true;
+  }, () => {
+    frenosPresionados.delete(id); controles.botones.freno = frenosPresionados.size > 0;
+  });
+}
+$("b-centrar").addEventListener("click", centrarTimon);
 
 // Escena de fondo detrás del menú mientras se juega la primera vez
 nuevaPartida();

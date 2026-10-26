@@ -31,7 +31,7 @@
     import { OrbitControls } from "three/addons/controls/OrbitControls.js";
     import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
     import { crearTorito, crearCarro, crearPersona, crearPerro, crearGato, animarCaminar,
-      crearObra, crearDesmonte, crearChoza, crearPirca, materialTierra } from "../js/modelos.js";
+      crearObra, crearDesmonte, crearChoza, crearPirca, materialTierra } from "../js/modelos.js?v=1.0.0";
 
     const renderer = new THREE.WebGLRenderer({ antialias: true });
     renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
@@ -83,6 +83,9 @@
     const combi = crearCarro({ tipo: "combi" });
     combi.position.set(6.2, 0, 0);
     escena.add(combi);
+    const bus = crearCarro({ tipo: "bus" });
+    bus.position.set(9.5, 0, 0);
+    escena.add(bus);
     const personas = ["senora", "viejo", "joven", undefined].map((tipo, i) => {
       const p = crearPersona({ tipo });
       p.position.set(-2.0 - i * 0.8, 0, 0);

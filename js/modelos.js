@@ -36,7 +36,7 @@ function usarTextura(material, nombre, colorConMapa) {
     const url = new URL(`../assets/tex/${archivo}`, import.meta.url).href;
     e.tex = _cargador.load(url, (t) => {
       t.colorSpace = THREE.SRGBColorSpace;
-      t.wrapS = t.wrapT = THREE.RepeatWrapping;
+      t.wrapS = t.wrapT = nombre.includes("-lima-v1") ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
       t.anisotropy = 4;
       t.needsUpdate = true;
       e.estado = 1;
@@ -45,7 +45,7 @@ function usarTextura(material, nombre, colorConMapa) {
     }, undefined, () => { e.estado = -1; e.pendientes.length = 0; });
     e.tex.colorSpace = THREE.SRGBColorSpace;
     _compartidos.add(e.tex);
-    e.tex.wrapS = e.tex.wrapT = THREE.RepeatWrapping;
+    e.tex.wrapS = e.tex.wrapT = nombre.includes("-lima-v1") ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
   }
   if (e.estado === 1) aplicarMapa(material, e.tex, colorConMapa);
   else if (e.estado === 0) e.pendientes.push([material, colorConMapa]);
@@ -65,7 +65,7 @@ function mStd(color, rough = 0.75, metal = 0, flat = true) {
 function mTex(nombre, colorSin, colorCon = 0xffffff, rough = 0.85, { metal = 0, flat = false, doble = false } = {}) {
   return mat(`tex|${nombre}|${colorSin}|${colorCon}|${rough}|${metal}|${flat}|${doble}`, () => usarTextura(
     new THREE.MeshStandardMaterial({
-      color: colorSin, roughness: rough, metalness: metal, flatShading: flat,
+      name: nombre, color: colorSin, roughness: rough, metalness: metal, flatShading: flat,
       side: doble ? THREE.DoubleSide : THREE.FrontSide,
     }), nombre, colorCon));
 }
@@ -921,6 +921,56 @@ const SPEC_COMBI = {
   franjas: [[1.02, 1.18], [0.92, 0.96]],
 };
 
+const SPEC_BUS = {
+  ancho: 2.1, rRueda: 0.42, wRueda: 0.24, xRueda: 0.94, ejes: [-2.2, 2.15],
+  cuerpo: () => perfilConArcos(-3.5, 3.5, 0.4, [{ z: -2.2, r: 0.49, yc: 0.42 }, { z: 2.15, r: 0.49, yc: 0.42 }],
+    [[3.5, 0.7], [3.5, 2.7], [3.35, 2.9], [-3.28, 2.9], [-3.5, 2.65], [-3.5, 0.6]]),
+  bisel: 0.06, cabina: null,
+  ventanas: Array.from({ length: 6 }, (_, i) => {
+    const z = -3.25 + i * 1.08;
+    return [[z, 1.78], [z, 2.65], [z + 0.96, 2.65], [z + 0.96, 1.78]];
+  }),
+  anchoVentanas: 2.112,
+  parabrisas: [[-3.51, 1.55], [-3.5, 2.65], 1.85],
+  luneta: null, centroCabina: [0, 1.7],
+  zFrente: -3.5, zAtras: 3.5, yFaros: 0.92, yStops: 1.0, yParachoque: 0.5,
+  franjas: [],
+};
+
+// Separar laterales permite proyectar la imagen sin estirarla sobre techo y capó.
+function geometriaCarro(S, superficie) {
+  const original = perfilLateral(S.cuerpo(), S.ancho, S.bisel, 2);
+  const fuente = original.index ? original.toNonIndexed() : original;
+  const pos = fuente.getAttribute("position"), normal = fuente.getAttribute("normal");
+  const uvOriginal = fuente.getAttribute("uv");
+  const posiciones = [], normales = [], uvs = [];
+  const techoPanel = S === SPEC_SEDAN ? 0.97 : S === SPEC_BUS ? 1.78 : 1.4;
+  for (let i = 0; i < pos.count; i += 3) {
+    const esLateral = Math.abs(normal.getX(i)) > 0.9;
+    const esFrente = !esLateral && normal.getZ(i) < -0.65;
+    if (superficie === "lateral" ? !esLateral : superficie === "frente" ? !esFrente : esLateral || esFrente) continue;
+    for (let j = i; j < i + 3; j++) {
+      posiciones.push(pos.getX(j), pos.getY(j), pos.getZ(j));
+      normales.push(normal.getX(j), normal.getY(j), normal.getZ(j));
+      if (superficie === "lateral") {
+        const u = (pos.getZ(j) - S.zFrente) / (S.zAtras - S.zFrente);
+        uvs.push(normal.getX(j) > 0 ? 1 - u : u,
+          (pos.getY(j) - 0.3) / (techoPanel - 0.3));
+      } else if (superficie === "frente") {
+        const altoFrente = S === SPEC_SEDAN ? 0.97 : S === SPEC_BUS ? 1.55 : 1.35;
+        uvs.push(0.5 - pos.getX(j) / S.ancho, (pos.getY(j) - 0.3) / (altoFrente - 0.3));
+      } else uvs.push(uvOriginal.getX(j), uvOriginal.getY(j));
+    }
+  }
+  const g = new THREE.BufferGeometry();
+  g.setAttribute("position", new THREE.Float32BufferAttribute(posiciones, 3));
+  g.setAttribute("normal", new THREE.Float32BufferAttribute(normales, 3));
+  g.setAttribute("uv", new THREE.Float32BufferAttribute(uvs, 2));
+  if (fuente !== original) fuente.dispose();
+  original.dispose();
+  return g;
+}
+
 function vidrioInclinado(padre, p0, p1, ancho, centro) {
   const dz = p1[0] - p0[0], dy = p1[1] - p0[1];
   const L = Math.hypot(dz, dy);
@@ -936,17 +986,25 @@ function vidrioInclinado(padre, p0, p1, ancho, centro) {
 
 export function crearCarro({ color, tipo = "sedan" } = {}) {
   const esCombi = tipo === "combi";
-  const S = esCombi ? SPEC_COMBI : SPEC_SEDAN;
+  const esBus = tipo === "bus";
+  const S = esBus ? SPEC_BUS : esCombi ? SPEC_COMBI : SPEC_SEDAN;
+  if (esBus && color == null) color = 0xeac46a;
   if (color == null) color = pick(esCombi ? COLORES_COMBI : COLORES_CARRO);
   const raiz = new THREE.Group();
-  raiz.name = esCombi ? "combi" : "carro";
+  raiz.name = esBus ? "bus" : esCombi ? "combi" : "carro";
   const carroceria = new THREE.Group();
   carroceria.name = "carroceria";
   raiz.add(carroceria);
   const mCuerpo = mPintura(color);
-  const k = esCombi ? "combi" : "sedan";
+  const k = esBus ? "bus" : esCombi ? "combi" : "sedan";
 
-  carroceria.add(malla(geo(`${k}_cuerpo`, () => perfilLateral(S.cuerpo(), S.ancho, S.bisel, 2)), mCuerpo));
+  carroceria.add(malla(geo(`${k}_cuerpo`, () => geometriaCarro(S, "base")), mCuerpo));
+  const nombreTextura = esBus ? "bus-lima-v1" : esCombi ? "combi-lima-v1" : "carro-lima-v1";
+  const mLateral = mTex(nombreTextura, color, esBus || esCombi ? 0xffffff : color, 0.7);
+  carroceria.add(malla(geo(`${k}_laterales`, () => geometriaCarro(S, "lateral")), mLateral));
+  const texturaFrente = esBus ? "bus-frente-lima-v1" : esCombi ? "combi-frente-lima-v1" : "carro-frente-lima-v1";
+  const mFrente = mTex(texturaFrente, color, esBus || esCombi ? 0xffffff : color, 0.65);
+  carroceria.add(malla(geo(`${k}_frente`, () => geometriaCarro(S, "frente")), mFrente));
   if (S.cabina) {
     carroceria.add(malla(geo(`${k}_cabina`, () => perfilLateral(S.cabina.puntos, S.cabina.ancho, 0.05, 1)), mCuerpo));
   }
@@ -954,10 +1012,10 @@ export function crearCarro({ color, tipo = "sedan" } = {}) {
   carroceria.add(malla(gVent, mVidrioOscuro(), false));
   vidrioInclinado(carroceria, S.parabrisas[0], S.parabrisas[1], S.parabrisas[2], S.centroCabina);
   if (S.luneta) vidrioInclinado(carroceria, S.luneta[0], S.luneta[1], S.luneta[2], S.centroCabina);
-  else pon(carroceria, malla(caja(1.4, 0.55, 0.02), mVidrioOscuro(), false), 0, 1.68, S.zAtras + 0.005);
+  else pon(carroceria, malla(caja(esBus ? 1.8 : 1.4, esBus ? 0.8 : 0.55, 0.02), mVidrioOscuro(), false), 0, esBus ? 2.2 : 1.68, S.zAtras + 0.005);
 
   if (S.franjas.length) {
-    const mF = mPintura(pick(COLORES_FRANJA));
+    const mF = mPintura(0x1a4fa0);
     const largo = S.zAtras - S.zFrente - 0.2;
     for (const [y0, y1] of S.franjas) {
       pon(carroceria, malla(caja(S.ancho + 0.014, y1 - y0, largo), mF, false), 0, (y0 + y1) / 2, (S.zAtras + S.zFrente) / 2 + 0.05);
@@ -983,7 +1041,7 @@ export function crearCarro({ color, tipo = "sedan" } = {}) {
   pon(carroceria, malla(caja(0.34, 0.12, 0.01), mStd(0xf4f4ee, 0.5), false), 0, S.yParachoque, S.zFrente - 0.055);
   pon(carroceria, malla(caja(0.34, 0.12, 0.01), mStd(0xf2d64b, 0.5), false), 0, S.yParachoque + 0.17, S.zAtras + 0.01);
   // Espejos laterales con luna
-  const yEsp = esCombi ? 1.45 : 1.02, zEsp = esCombi ? -2.05 : -0.85;
+  const yEsp = esBus ? 1.9 : esCombi ? 1.45 : 1.02, zEsp = esBus ? -3.25 : esCombi ? -2.05 : -0.85;
   for (const s of [-1, 1]) {
     pon(carroceria, malla(cajaR(0.08, 0.1, 0.14, 0.02), mNegro(), false), s * (S.ancho / 2 + 0.05), yEsp, zEsp);
     pon(carroceria, malla(caja(0.06, 0.08, 0.005), mEspejo(), false), s * (S.ancho / 2 + 0.05), yEsp, zEsp + 0.072);
@@ -993,7 +1051,7 @@ export function crearCarro({ color, tipo = "sedan" } = {}) {
   for (const z of S.ejes) for (const s of [-1, 1]) {
     ruedas.push(pon(raiz, crearRueda(S.rRueda, S.wRueda), s * S.xRueda, S.rRueda, z));
   }
-  raiz.userData = { ruedas, carroceria, tipo: esCombi ? "combi" : "sedan" };
+  raiz.userData = { ruedas, carroceria, tipo: k, largo: S.zAtras - S.zFrente, ancho: S.ancho + 0.12 };
   fusionar(carroceria, { cache: `carro|${k}` });
   return raiz;
 }

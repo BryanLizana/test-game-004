@@ -75,6 +75,13 @@ const Pista = clase("js/pista.js", "Pista", { THREE: { Vector3 } });
 let muestras = 0;
 for (const semilla of [1, 42, 12345, 87654]) {
   const p = new Pista(semilla);
+  assert.equal(p.barrio(0), "cerro");
+  assert.deepEqual([...new Set(p.casas.flat().map((c) => c.barrio))].sort(), ["avenida", "ladera", "vecindario"]);
+  assert.ok(p.casas.flat().some((c) => c.muro));
+  assert.ok(p.casas.flat().some((c) => c.negocio >= 0));
+  assert.ok(p.casas.flat().every((c) => c.tex >= 0 && c.tex < 24));
+  assert.ok(p.parches.length > 20 && p.grietas.length > 20);
+  assert.equal(p.polvo, undefined, "sin manchas crema al borde de la pista");
   const tipos = new Set();
   let distintos = 0, rebajes = 0;
   for (let s = Math.ceil(p.finTierra); s < p.largo - 1; s += 0.25) {
@@ -90,6 +97,15 @@ for (const semilla of [1, 42, 12345, 87654]) {
   }
   assert.equal(tipos.size, 3);
   assert.ok(distintos > 100 && rebajes > 10);
+  let peldaños = 0, urbanos = 0;
+  for (let s = Math.ceil(p.finTierra) + 4; s < p.largo - 4; s++) {
+    urbanos++;
+    if (p.tipoVereda(s, 1) !== "escalera" || p.muestra(s).g <= 0.055) continue;
+    const a = p.muestra(s + 0.2).y + p.alturaLateral(4, s + 0.2);
+    const b = p.muestra(s + 0.7).y + p.alturaLateral(4, s + 0.7);
+    if (Math.abs(a - b) < 0.00001) peldaños++;
+  }
+  assert.ok(peldaños / urbanos > 0.35, "las escaleras deben verse con huellas horizontales frecuentes");
   // Ejecutar la generación real de las veredas de todos los bloques.
   const codigo = leer("js/pista.js");
   const seccion = codigo.slice(codigo.indexOf("    const vereda = nuevo();"), codigo.indexOf("    // Miradores: baranda"));
@@ -115,7 +131,7 @@ class Elemento {
 }
 const Controles = clase("js/controles.js", "Controles", {
   navigator: { userAgent: "test", maxTouchPoints: 0 }, localStorage: { getItem: () => null },
-  addEventListener() {}, document: { addEventListener() {} }, screen: {},
+  addEventListener() {}, document: { addEventListener() {} }, screen: {}, window: {},
 });
 const controles = new Controles();
 controles.teclas.add("w");
@@ -125,8 +141,11 @@ assert.equal(controles.actualizar(0.1).acelerador, false);
 const elementos = new Map();
 const $ = (id) => { if (!elementos.has(id)) elementos.set(id, new Elemento()); return elementos.get(id); };
 const main = leer("js/main.js");
-const bloque = main.slice(main.indexOf("const punterosGiro ="), main.indexOf('controles.botonMantener($("b-freno")'));
-vm.runInNewContext(bloque, { controles, $, estado: "jugando" });
+const bloque = main.slice(main.indexOf("const punterosGiro ="), main.indexOf("// Escena de fondo"));
+const eventosGlobales = new Map();
+vm.runInNewContext(bloque, { controles, $, estado: "jugando", centrarTimon() {},
+  addEventListener(tipo, fn) { if (!eventosGlobales.has(tipo)) eventosGlobales.set(tipo, []); eventosGlobales.get(tipo).push(fn); },
+});
 $("zona-izq").emitir("pointerdown", 1);
 $("b-izq").emitir("pointerdown", 2);
 $("zona-der").emitir("pointerdown", 3);
@@ -138,7 +157,64 @@ $("b-izq").emitir("pointercancel", 2);
 assert.equal(controles.botones.izq, false);
 $("zona-der").emitir("lostpointercapture", 3);
 assert.equal(controles.botones.der, false);
+$("b-freno-izq").emitir("pointerdown", 5);
+$("b-freno").emitir("pointerdown", 6);
+$("b-freno-izq").emitir("pointerup", 5);
+assert.equal(controles.actualizar(0.1).freno, true, "soltar un freno no cancela el otro");
+$("b-freno").emitir("pointercancel", 6);
+assert.equal(controles.actualizar(0.1).freno, false);
+$("b-freno-izq").emitir("pointerdown", 7);
 controles.limpiar();
+assert.equal(controles.actualizar(0.1).freno, false);
 assert.equal(controles.actualizar(0.1).acelerador, false);
 assert.equal(controles.actualizar(0.1).giro, 0);
+$("zona-izq").emitir("pointerdown", 9);
+controles.actualizar(0.2);
+assert.ok(controles.giro < 0);
+for (const fn of eventosGlobales.get("pointerup")) fn({ pointerId: 9 });
+assert.equal(controles.botones.izq, false, "soltar fuera de la zona no deja el giro pegado");
+$("zona-izq").emitir("pointerdown", 10);
+controles.botones.acelerador = true;
+controles.centrarDireccion();
+assert.equal(controles.actualizar(0.1).giro, 0, "centrar elimina pulsaciones pendientes tras un choque");
+assert.equal(controles.botones.acelerador, true, "centrar no suelta el acelerador");
+controles.limpiar();
+controles.alMovimiento({ accelerationIncludingGravity: { x: 0, y: 0 } });
+controles.alMovimiento({ accelerationIncludingGravity: { x: 3, y: 0 } });
+assert.ok(controles.actualizar(0.1).giro < 0);
+assert.equal(controles.actualizar(0.7).giro, 0, "un sensor sin nuevas lecturas no mantiene el giro");
+controles.alMovimiento({ accelerationIncludingGravity: { x: 3, y: 0 } });
+controles.calibrar();
+assert.equal(controles.actualizar(0.1).giro, 0);
+
+const modeloSimple = () => ({
+  userData: {}, position: { set() {} }, rotation: { x: 0, y: 0, z: 0, set() {} }, visible: true,
+});
+const modelosSimple = Object.fromEntries(["crearCarro", "crearTorito", "crearPersona", "crearPerro", "crearGato", "crearObra", "crearDesmonte"].map((k) => [k, modeloSimple]));
+modelosSimple.animarCaminar = modelosSimple.liberarRecursos = () => {};
+const azarFijo = Object.create(Math); azarFijo.random = () => 0.6;
+const Trafico = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, modelos: modelosSimple, Math: azarFijo });
+const circuito = {
+  largo: 1000, finTierra: 200, cruces: [300, 500, 700],
+  muestra: (_s, out = {}) => Object.assign(out, { g: 0.15, k: 0.06, th: 0 }),
+  enTierra: (s) => s < 200, alturaLateral: () => 0,
+  aMundo: (s, d, h, out) => out.set(s, h, d),
+};
+const escenaSimple = { add() {}, remove() {} };
+const carreraBots = new Trafico(escenaSimple, circuito, "carrera");
+assert.equal(carreraBots.agentes.length, 3);
+assert.ok(carreraBots.agentes.every((a) => a.rival && !a.peaton && !a.estatico));
+const jugador = { s: 8, d: 1.75, v: 18, h: 0, estado: "ok", invulnerable: true };
+for (let i = 0; i < 10000; i++) {
+  jugador.s = Math.min(940, jugador.s + jugador.v / 60);
+  carreraBots.actualizar(1 / 60, jugador);
+  assert.equal(carreraBots.agentes.length, 3, "los rivales no desaparecen de la clasificación");
+  assert.ok(carreraBots.agentes.every((a) => Number.isFinite(a.s) && Number.isFinite(a.d) && a.v >= 0 && Math.abs(a.d) <= 1.65));
+}
+assert.ok(carreraBots.agentes.every((a) => a.termino && a.tiempoLlegada > 0));
+assert.ok(carreraBots.puesto(jugador) >= 1 && carreraBots.puesto(jugador) <= 4);
+const traficoOriginal = new Trafico(escenaSimple, circuito);
+assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "persona"));
+assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "desmonte"));
+console.log("OK: tres bots completan la carrera; sin peatones/desmontes en Carrera; liberación global y centrado del timón.");
 console.log(`OK: Carrera, frenos en pendiente, modo original, multitouch y ${muestras} muestras de veredas; geometrías de 4 pistas sin valores inválidos.`);

@@ -1,0 +1,61 @@
+{
+  "tool": "image_gen",
+  "assets": [
+    {
+      "file": "assets/tex/carro-lima-v1.jpg",
+      "prompt": "Create one game-ready albedo texture image, wide 3:1 rectangle, a flat orthographic CLOSE-UP of the LOWER SIDE DOOR BODY PANEL ONLY of an everyday Lima Peru sedan taxi. Entire image filled edge to edge with neutral silver white car paint, two realistic door seams, small black door handles near upper quarter, subtle scuffs and dust concentrated along lower edge, subtle rubber trim horizontal across middle. No wheels, no wheel arches, no windows, no vehicle silhouette, no perspective, no surroundings, no text, no logos, no baked dramatic lighting. It will be mapped onto a rectangular 3D side door panel. Stylized realistic hand-painted low-poly mobile driving game surface, medium contrast, readable details. White neutral paint must allow runtime color tinting. Output just the texture.",
+      "size": [
+        1024,
+        342
+      ]
+    },
+    {
+      "file": "assets/tex/combi-lima-v1.jpg",
+      "prompt": "Create one game-ready albedo texture image wide 3:1 rectangle. Flat orthographic CLOSE-UP of LOWER SIDE BODY PANELS ONLY of a well-used Lima Peru public transport combi minibus. Entire canvas filled edge-to-edge with aged cream white painted sheet metal. Long blue and red transport livery bands across middle, a sliding door vertical seam and handle, rivets, worn small inspection stickers, fine scratches and grey brown road dust along bottom. No windows, no wheels, no wheel arches, no full vehicle silhouette, no perspective, no surroundings, no logos, no readable text, no strong shadows. This rectangular image maps directly onto lower side body beneath real 3D windows. Stylized realistic painted texture for mobile low-poly game. Output texture only.",
+      "size": [
+        1024,
+        342
+      ]
+    },
+    {
+      "file": "assets/tex/bus-lima-v1.jpg",
+      "prompt": "Create one game-ready albedo texture image wide 3:1 rectangle. Flat orthographic CLOSE-UP of LOWER SIDE BODY PANELS ONLY of an older Lima Peru city bus. Entire canvas filled edge-to-edge with cream and ochre yellow painted metal. Thick dark red horizontal transport stripe, rectangular maintenance hatches, subtle panel seams rivets air ventilation grille at the right edge, a little chipped paint, road grime at bottom. No windows, no wheels, no wheel arches, no full vehicle outline, no perspective, no scenery, no logos, no readable text, no dramatic shading. Intended to be mapped directly onto the rectangular side below 3D bus windows. Stylized realistic hand painted texture for mobile low-poly driving game. Output texture only.",
+      "size": [
+        1024,
+        342
+      ]
+    },
+    {
+      "file": "assets/tex/grafiti-lima-v1.jpg",
+      "prompt": "Use case: stylized-concept. Asset type: seamless rectangular wall albedo texture for a Lima hillside mobile driving game. Create a flat front-facing orthographic aged plaster wall covered with authentic colorful neighborhood graffiti lettering and abstract murals, wide 3:1 composition filling entire image. Faded turquoise and cream painted cement, exposed rough plaster at lower edge, water stains, subtle chips. Large expressive blue coral yellow violet spray-painted lettering reading BARRIO across the central area, layered smaller illegible tags, a few abstract geometric shapes. Natural street art, no brands, no political slogans, no people, no street, no doors or windows, no perspective, no frame, no cast shadows, no directional lighting. This is a texture that will be applied directly to a 3D wall, not a photo of a wall within a scene. Detailed and readable from a driving camera.",
+      "size": [
+        1024,
+        342
+      ]
+    },
+    {
+      "file": "assets/tex/carro-frente-lima-v1.jpg",
+      "prompt": "Generate a game-ready rectangular albedo texture, wide 3:1, flat orthographic FRONT LOWER FASCIA ONLY of an everyday older Lima Peru sedan. Entire canvas filled edge-to-edge with neutral silver white painted body. Pair of rectangular headlights at left and right near upper quarter, black radiator grille centered, a small neutral license plate with no readable text centered below, dark horizontal bumper at bottom, subtle scratches fine road dust. No windshield, no wheels, no background, no entire vehicle silhouette, no perspective, no logos, no strong shadows or directional lighting. Front-facing 3D surface texture for mobile low-poly driving game. White neutral paint allows runtime color tinting. Output only texture.",
+      "size": [
+        1024,
+        342
+      ]
+    },
+    {
+      "file": "assets/tex/combi-frente-lima-v1.jpg",
+      "prompt": "Generate a game-ready rectangular albedo texture, wide 2:1, flat orthographic FRONT LOWER NOSE ONLY of a well-used Lima Peru combi public transport minibus. Entire image filled with aged cream white sheet metal body from beneath windshield down to bumper. Square headlights on the far left and right at mid height, blue and thin red horizontal transport livery bands, central dark radiator vent, small yellowish license plate without readable text, black rubber bumper at bottom. Subtle chipped paint, grey brown road grime and scratches. No windshield, wheels, background, perspective, full vehicle silhouette, brand logo, strong shadows. Texture for direct mapping to 3D front fascia of a low-poly mobile game. Output texture only.",
+      "size": [
+        1024,
+        512
+      ]
+    },
+    {
+      "file": "assets/tex/bus-frente-lima-v1.jpg",
+      "prompt": "Generate a game-ready rectangular albedo texture, wide 2:1, flat orthographic FRONT LOWER FASCIA ONLY of an older Lima Peru city bus. Entire canvas filled edge-to-edge with ochre yellow and cream painted metal below windshield. Wide dark red horizontal transport stripe, paired rectangular headlights at left and right, a dark ventilation grille centrally, yellow plate without readable text, dark bumper along bottom edge. Fine rivets metal seams, moderate scratched paint road grime at bottom. No windshield, wheels, people, scenery, perspective, complete bus silhouette, brand logo or directional shadows. Intended for direct UV mapping onto front of a low-poly 3D bus in mobile driving game. Output only texture.",
+      "size": [
+        1024,
+        512
+      ]
+    }
+  ]
+}

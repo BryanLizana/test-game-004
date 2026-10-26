@@ -7,7 +7,7 @@ if (!/^\d+\.\d+\.\d+$/.test(nueva || "")) {
   console.error("Uso: node scripts/version.mjs X.Y.Z");
   process.exit(1);
 }
-const archivos = ["index.html", ...fs.readdirSync("js").filter((f) => f.endsWith(".js")).map((f) => `js/${f}`)];
+const archivos = ["index.html", "pruebas/modelos.html", ...fs.readdirSync("js").filter((f) => f.endsWith(".js")).map((f) => `js/${f}`)];
 for (const ruta of archivos) {
   const antes = fs.readFileSync(ruta, "utf8");
   const despues = antes

@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=0.7.2";
-import { LARGO_TORITO, ANCHO_TORITO } from "./vehiculo.js?v=0.7.2";
-import * as modelos from "./modelos.js?v=0.7.2";
+import { ANCHO, VEREDA } from "./pista.js?v=1.0.0";
+import { LARGO_TORITO, ANCHO_TORITO } from "./vehiculo.js?v=1.0.0";
+import * as modelos from "./modelos.js?v=1.0.0";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -18,6 +18,7 @@ const COLORES_TORITO = [0x1f4fbf, 0x2a9d4b, 0xffd200, 0xf28c28, 0x6a4c93];
 const MEDIDAS = {
   carro: { largo: 4.2, ancho: 1.7 },
   combi: { largo: 5.0, ancho: 1.9 },
+  bus: { largo: 7.0, ancho: 2.22 },
   torito: { largo: LARGO_TORITO, ancho: ANCHO_TORITO },
   persona: { largo: 0.5, ancho: 0.5 },
   perro: { largo: 0.7, ancho: 0.35 },
@@ -37,9 +38,10 @@ function cajaRespaldo(color, largo, ancho, alto) {
 }
 
 export class Trafico {
-  constructor(escena, pista) {
+  constructor(escena, pista, modo = "sinFrenos") {
     this.escena = escena;
     this.pista = pista;
+    this.modo = modo;
     this.agentes = [];
     this.tSubida = 2;
     this.tLento = 8;
@@ -57,6 +59,7 @@ export class Trafico {
       }
       case "carro": return crearCarro();
       case "combi": return crearCarro({ tipo: "combi" });
+      case "bus": return crearCarro({ tipo: "bus" });
       case "torito": return crearTorito({ color: COLORES_TORITO[(Math.random() * COLORES_TORITO.length) | 0], detalle: "bajo" });
       case "persona": return crearPersona({ tipo: extra.tipoPersona });
       case "perro": return crearPerro();
@@ -79,6 +82,15 @@ export class Trafico {
   // Autos estacionados y peatones esperando en los cruces
   sembrar() {
     const p = this.pista;
+    if (this.modo === "carrera") {
+      for (let i = 0; i < 3; i++) {
+        this.agregar("torito", i === 0 ? 8 : 14, i === 1 ? 1.65 : -1.65, 0, {
+          rival: true, nombre: `Rival ${i + 1}`, carril: i === 1 ? 1.65 : -1.65,
+          ritmo: 18.5 + i * 0.9, termino: false, tiempoLlegada: null, tImpacto: 0,
+        });
+      }
+      return;
+    }
     for (let s = p.finTierra + 30; s < p.largo - 120; s += 70 + Math.random() * 110) {
       const m = p.muestra(s);
       if (Math.abs(m.k) > 0.02) continue;
@@ -146,6 +158,7 @@ export class Trafico {
   }
 
   actualizar(dt, veh) {
+    if (this.modo === "carrera") return this.actualizarCarrera(dt, veh);
     this.tiempo += dt;
     const p = this.pista;
 
@@ -156,7 +169,7 @@ export class Trafico {
       const s = veh.s + 180 + Math.random() * 60;
       if (s < p.largo - 80) {
         const r = Math.random();
-        const tipo = p.enTierra(s) ? "torito" : r < 0.45 ? "carro" : r < 0.8 ? "torito" : "combi";
+        const tipo = p.enTierra(s) ? "torito" : r < 0.4 ? "carro" : r < 0.65 ? "torito" : r < 0.9 ? "combi" : "bus";
         this.agregar(tipo, s, -ANCHO / 4, -(5 + Math.random() * 5));
       }
     }
@@ -165,7 +178,11 @@ export class Trafico {
     if (this.tLento <= 0) {
       this.tLento = 14 + Math.random() * 14;
       const s = veh.s + 140;
-      if (s < p.largo - 120) this.agregar(Math.random() < 0.5 ? "torito" : "combi", s, ANCHO / 4, 3 + Math.random() * 3);
+      if (s < p.largo - 120) {
+        const r = Math.random();
+        const tipo = p.enTierra(s) ? "torito" : r < 0.45 ? "torito" : r < 0.85 ? "combi" : "bus";
+        this.agregar(tipo, s, ANCHO / 4, 3 + Math.random() * 3);
+      }
     }
 
     let choque = null;
@@ -208,6 +225,59 @@ export class Trafico {
       else this.agentes[restantes++] = a;
     }
     this.agentes.length = restantes;
+    return choque;
+  }
+
+  puesto(veh) {
+    return 1 + this.agentes.reduce((n, a) => n + (a.rival && (a.termino || a.s > veh.s) ? 1 : 0), 0);
+  }
+
+  actualizarCarrera(dt, veh) {
+    this.tiempo += dt;
+    const meta = this.pista.largo - 60;
+    let choque = null;
+    for (const a of this.agentes) {
+      a.tImpacto = Math.max(0, a.tImpacto - dt);
+      if (!a.termino) {
+        const m = this.pista.muestra(Math.min(meta, a.s + 8), this.muestra);
+        let objetivo = Math.min(a.ritmo + m.g * 8, Math.sqrt(35 / Math.max(0.015, Math.abs(m.k))));
+        // Adelantamiento entre dos carriles: a lo sumo 3 rivales, sin búsquedas costosas.
+        let delante = null;
+        for (const otro of this.agentes) {
+          if (otro === a || otro.termino || otro.s <= a.s || otro.s - a.s > 12 || Math.abs(otro.d - a.d) > 1.5) continue;
+          if (!delante || otro.s < delante.s) delante = otro;
+        }
+        if (veh.estado === "ok" && veh.s > a.s && veh.s - a.s < 12 && Math.abs(veh.d - a.d) < 1.5
+          && (!delante || veh.s < delante.s)) delante = veh;
+        if (delante) {
+          const alterno = a.d >= 0 ? -1.65 : 1.65;
+          const ocupado = (Math.abs(veh.s - a.s) < 8 && Math.abs(veh.d - alterno) < 1.5)
+            || this.agentes.some((otro) => otro !== a && !otro.termino && Math.abs(otro.s - a.s) < 8 && Math.abs(otro.d - alterno) < 1.5);
+          if (!ocupado) a.carril = alterno;
+          else objetivo = Math.min(objetivo, Math.max(0, delante.v - (delante.s - a.s < 5 ? 2 : 0)));
+        }
+        a.v += Math.max(-7 * dt, Math.min(5.6 * dt, objetivo - a.v));
+        const dAnterior = a.d;
+        a.d += Math.max(-1.4 * dt, Math.min(1.4 * dt, a.carril - a.d));
+        a.s = Math.min(meta, a.s + a.v * dt);
+        this.colocar(a);
+        a.modelo.rotation.y -= Math.atan2((a.d - dAnterior) / Math.max(dt, 0.001), Math.max(1, a.v));
+        a.modelo.rotation.z = Math.max(-0.18, Math.min(0.18, m.k * a.v * a.v * 0.008));
+        for (const r of a.modelo.userData.ruedas || []) r.rotation.x -= a.v * dt / 0.3;
+        if (a.modelo.userData.ruedaDelantera) a.modelo.userData.ruedaDelantera.rotation.x -= a.v * dt / 0.2;
+        for (const r of a.modelo.userData.ruedasTraseras || []) r.rotation.x -= a.v * dt / 0.2;
+        if (a.s >= meta) { a.termino = true; a.tiempoLlegada = this.tiempo; a.v = 0; a.modelo.visible = false; }
+      }
+      // Los corredores conservan su movimiento después de un roce.
+      if (!choque && !a.termino && a.tImpacto === 0 && !veh.invulnerable && veh.estado === "ok" && veh.h < 0.8
+        && Math.abs(a.s - veh.s) < (a.largo + LARGO_TORITO) * 0.45
+        && Math.abs(a.d - veh.d) < (a.ancho + ANCHO_TORITO) * 0.45) {
+        a.tImpacto = 1;
+        choque = { agente: a, vRel: Math.abs(veh.v - a.v) };
+      }
+      // Permanecen en la clasificación aunque salgan del alcance visible.
+      if (!a.termino) a.modelo.visible = Math.abs(a.s - veh.s) < 340;
+    }
     return choque;
   }
 }

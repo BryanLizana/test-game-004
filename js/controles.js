@@ -14,9 +14,10 @@ export class Controles {
     this.freno = false;
     this.teclas = new Set();
     this.botones = { izq: false, der: false, freno: false, acelerador: false };
-    this.sensor = { activo: false, crudo: 0, base: null, filtrado: 0 };
+    this.sensor = { activo: false, crudo: 0, base: null, filtrado: 0, edad: Infinity };
     this.sensorConectado = false;
     this.soltadores = [];
+    this.soltadoresDireccion = [];
     this.entrada = { giro: 0, freno: false, acelerador: false };
     this.invertir = leerAlmacen("invertirGiro") === "1";
     this.alCamara = () => {};
@@ -49,9 +50,11 @@ export class Controles {
     let puntero = null;
     const soltar = () => {
       if (puntero === null) return;
+      const id = puntero;
       puntero = null;
       el.classList.remove("activo");
       alSoltar && alSoltar();
+      if (el.hasPointerCapture?.(id)) el.releasePointerCapture(id);
     };
     this.soltadores.push(soltar);
     const on = (e) => {
@@ -66,6 +69,8 @@ export class Controles {
     el.addEventListener("pointerup", off);
     el.addEventListener("pointercancel", off);
     el.addEventListener("lostpointercapture", off);
+    addEventListener("pointerup", off);
+    addEventListener("pointercancel", off);
   }
 
   limpiar() {
@@ -76,6 +81,13 @@ export class Controles {
     this.giro = 0; this.freno = false;
     this.sensor.filtrado = 0;
     this.alClaxon(false);
+  }
+
+  centrarDireccion() {
+    for (const soltar of this.soltadoresDireccion) soltar();
+    for (const k of ["a", "d", "arrowleft", "arrowright"]) this.teclas.delete(k);
+    this.botones.izq = this.botones.der = false;
+    this.giro = this.entrada.giro = this.sensor.filtrado = 0;
   }
 
   async activarSensores() {
@@ -101,14 +113,14 @@ export class Controles {
     let grados = Math.asin(Math.max(-1, Math.min(1, gx / 9.81))) * 180 / Math.PI;
     if (!esIOS) grados = -grados;
     this.sensor.crudo = grados;
+    this.sensor.edad = 0;
     if (this.sensor.base === null) this.sensor.base = grados;
     this.sensor.activo = true;
   }
 
   calibrar() {
     this.sensor.base = this.sensor.activo ? this.sensor.crudo : null;
-    this.sensor.filtrado = 0;
-    this.giro = 0;
+    this.centrarDireccion();
   }
 
   alternarInvertir() {
@@ -120,6 +132,11 @@ export class Controles {
   get usandoSensor() { return this.sensor.activo; }
 
   actualizar(dt) {
+    this.sensor.edad += dt;
+    if (this.sensor.edad > 0.6) {
+      this.sensor.activo = false;
+      this.sensor.filtrado = 0;
+    }
     const t = this.teclas;
     const izq = t.has("arrowleft") || t.has("a") || this.botones.izq;
     const der = t.has("arrowright") || t.has("d") || this.botones.der;
