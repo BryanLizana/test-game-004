@@ -15,6 +15,9 @@ export class Controles {
     this.teclas = new Set();
     this.botones = { izq: false, der: false, freno: false };
     this.sensor = { activo: false, crudo: 0, base: null, filtrado: 0 };
+    this.sensorConectado = false;
+    this.soltadores = [];
+    this.entrada = { giro: 0, freno: false };
     this.invertir = leerAlmacen("invertirGiro") === "1";
     this.alCamara = () => {};
     this.alClaxon = () => {};
@@ -34,20 +37,48 @@ export class Controles {
       this.teclas.delete(k);
       if (k === "h") this.alClaxon(false);
     });
-    addEventListener("blur", () => this.teclas.clear());
+    addEventListener("blur", () => this.limpiar());
+    document.addEventListener("visibilitychange", () => { if (document.hidden) this.limpiar(); });
+    const orientar = () => { this.sensor.activo = false; this.calibrar(); };
+    if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener("change", orientar);
+    else addEventListener("orientationchange", orientar);
   }
 
   // Conecta un botón táctil que se mantiene presionado
   botonMantener(el, alPresionar, alSoltar) {
-    const on = (e) => { e.preventDefault(); el.classList.add("activo"); alPresionar(); };
-    const off = (e) => { e.preventDefault(); el.classList.remove("activo"); alSoltar && alSoltar(); };
+    let puntero = null;
+    const soltar = () => {
+      if (puntero === null) return;
+      puntero = null;
+      el.classList.remove("activo");
+      alSoltar && alSoltar();
+    };
+    this.soltadores.push(soltar);
+    const on = (e) => {
+      e.preventDefault();
+      if (puntero !== null) return;
+      puntero = e.pointerId;
+      el.setPointerCapture(e.pointerId);
+      el.classList.add("activo"); alPresionar();
+    };
+    const off = (e) => { if (e.pointerId === puntero) { e.preventDefault(); soltar(); } };
     el.addEventListener("pointerdown", on);
     el.addEventListener("pointerup", off);
     el.addEventListener("pointercancel", off);
-    el.addEventListener("pointerleave", off);
+    el.addEventListener("lostpointercapture", off);
+  }
+
+  limpiar() {
+    this.teclas.clear();
+    for (const soltar of this.soltadores) soltar();
+    this.botones.izq = this.botones.der = this.botones.freno = false;
+    this.giro = 0; this.freno = false;
+    this.sensor.filtrado = 0;
+    this.alClaxon(false);
   }
 
   async activarSensores() {
+    if (this.sensorConectado) return true;
     if (typeof DeviceMotionEvent === "undefined") return false;
     try {
       if (typeof DeviceMotionEvent.requestPermission === "function") {
@@ -55,6 +86,7 @@ export class Controles {
       }
     } catch (_) { return false; }
     addEventListener("devicemotion", (e) => this.alMovimiento(e));
+    this.sensorConectado = true;
     return true;
   }
 
@@ -62,7 +94,7 @@ export class Controles {
   // celular parado (como timón) o echado (inclinando un costado).
   alMovimiento(e) {
     const g = e.accelerationIncludingGravity;
-    if (!g || g.x == null) return;
+    if (!g || !Number.isFinite(g.x) || !Number.isFinite(g.y)) return;
     const ang = ((screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0) * Math.PI / 180;
     const gx = g.x * Math.cos(ang) - g.y * Math.sin(ang);
     let grados = Math.asin(Math.max(-1, Math.min(1, gx / 9.81))) * 180 / Math.PI;
@@ -72,7 +104,11 @@ export class Controles {
     this.sensor.activo = true;
   }
 
-  calibrar() { this.sensor.base = this.sensor.activo ? this.sensor.crudo : null; }
+  calibrar() {
+    this.sensor.base = this.sensor.activo ? this.sensor.crudo : null;
+    this.sensor.filtrado = 0;
+    this.giro = 0;
+  }
 
   alternarInvertir() {
     this.invertir = !this.invertir;
@@ -104,6 +140,7 @@ export class Controles {
     } else {
       this.giro -= Math.sign(this.giro) * Math.min(Math.abs(this.giro), 3 * dt);
     }
-    return { giro: this.giro, freno: this.freno };
+    this.entrada.giro = this.giro; this.entrada.freno = this.freno;
+    return this.entrada;
   }
 }

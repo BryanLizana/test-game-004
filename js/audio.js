@@ -1,7 +1,7 @@
 // Sonido sintetizado con WebAudio: motor, viento, llantas, claxon y golpes.
 export class Sonido {
   iniciar() {
-    if (this.ctx) { this.ctx.resume(); return; }
+    if (this.ctx) { this.ctx.resume().catch(() => {}); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
     const ctx = this.ctx = new AC();
@@ -54,6 +54,7 @@ export class Sonido {
     }
     const lp = ctx.createBiquadFilter(); lp.type = "lowpass"; lp.frequency.value = 2200;
     this.claxonGain.connect(lp).connect(this.maestro);
+    ctx.resume().catch(() => {});
   }
 
   actualizar({ rpm, v, chirrido, motorVivo }) {
@@ -83,8 +84,13 @@ export class Sonido {
     g.gain.setValueAtTime(0.4 + fuerza * 0.6, t);
     g.gain.exponentialRampToValueAtTime(0.001, t + 0.25 + fuerza * 0.5);
     f.connect(lp).connect(g).connect(this.maestro);
+    f.onended = () => { f.disconnect(); lp.disconnect(); g.disconnect(); };
     f.start(t); f.stop(t + 1);
   }
 
-  silenciar(si) { if (this.maestro) this.maestro.gain.value = si ? 0 : 0.8; }
+  silenciar(si) {
+    if (!this.maestro) return;
+    this.maestro.gain.value = si ? 0 : 0.8;
+    if (!si) this.ctx.resume().catch(() => {});
+  }
 }

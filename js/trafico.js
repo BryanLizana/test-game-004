@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=0.5.0";
-import { LARGO_TORITO, ANCHO_TORITO } from "./vehiculo.js?v=0.5.0";
-import * as modelos from "./modelos.js?v=0.5.0";
+import { ANCHO, VEREDA } from "./pista.js?v=0.6.1";
+import { LARGO_TORITO, ANCHO_TORITO } from "./vehiculo.js?v=0.6.1";
+import * as modelos from "./modelos.js?v=0.6.1";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -45,7 +45,7 @@ export class Trafico {
     this.tLento = 8;
     this.tiempo = 0;
     this.gritos = [];
-    this.v = new THREE.Vector3();
+    this.muestra = {};
     this.sembrar();
   }
 
@@ -112,11 +112,11 @@ export class Trafico {
   }
 
   colocar(a) {
-    if (a.estatico && a.colocado) return;
-    a.colocado = a.estatico && a.d !== 0;
-    const m = this.pista.muestra(a.s);
+    if ((a.estatico || a.estacionado) && a.colocado) return;
+    a.colocado = (a.estatico || a.estacionado) && a.d !== 0;
+    const m = this.pista.muestra(a.s, this.muestra);
     const h = this.pista.alturaLateral(a.d, a.s);
-    this.pista.aMundo(a.s, a.d, h, a.modelo.position);
+    this.pista.aMundo(a.s, a.d, h, a.modelo.position, m);
     let rumbo = m.th;
     if (a.peaton) rumbo += a.vd !== 0 ? Math.sign(a.vd) * Math.PI / 2 : (a.lado > 0 ? -Math.PI / 2 : Math.PI / 2);
     else if (a.v < 0 || a.sentido < 0) rumbo += Math.PI;
@@ -125,9 +125,10 @@ export class Trafico {
   }
 
   reiniciar() {
-    for (const a of this.agentes) this.escena.remove(a.modelo);
+    for (const a of this.agentes) { this.escena.remove(a.modelo); modelos.liberarRecursos(a.modelo); }
     this.agentes = [];
     this.tSubida = 2; this.tLento = 8;
+    this.tiempo = 0; this.gritos.length = 0;
     this.sembrar();
   }
 
@@ -177,7 +178,7 @@ export class Trafico {
           this.gritos.push(elegir(GRITOS[clave] || GRITOS.joven));
         }
         a.d += a.vd * dt;
-        if (a.vd !== 0 && Math.abs(a.d) > ANCHO / 2 + VEREDA * 0.6) { a.vd = 0; a.d = Math.sign(a.d) * (ANCHO / 2 + VEREDA * 0.6); a.lado = Math.sign(a.d); }
+        if (a.vd * a.d > 0 && Math.abs(a.d) > ANCHO / 2 + VEREDA * 0.6) { a.vd = 0; a.d = Math.sign(a.d) * (ANCHO / 2 + VEREDA * 0.6); a.lado = Math.sign(a.d); }
         if (a.vd !== 0 && !a.chocado) animarCaminar(a.modelo, this.tiempo * (a.tipo === "persona" ? 1.3 : 2));
       } else if (!a.chocado) {
         a.s += a.v * dt;
@@ -190,7 +191,7 @@ export class Trafico {
       this.colocar(a);
 
       // Colisión con el jugador (cajas en s/d)
-      if (!a.chocado && veh.estado === "ok" && veh.h < 0.8) {
+      if (!choque && !a.chocado && veh.estado === "ok" && veh.h < 0.8 && !veh.invulnerable) {
         const ds = Math.abs(a.s - veh.s), dd = Math.abs(a.d - veh.d);
         if (ds < (a.largo + LARGO_TORITO) * 0.45 && dd < (a.ancho + ANCHO_TORITO) * 0.45) {
           a.chocado = true;
@@ -200,11 +201,13 @@ export class Trafico {
     }
 
     // Retirar lo que quedó muy atrás
-    this.agentes = this.agentes.filter((a) => {
+    let restantes = 0;
+    for (const a of this.agentes) {
       const fuera = a.s < veh.s - 60 || a.s > p.largo;
-      if (fuera) this.escena.remove(a.modelo);
-      return !fuera;
-    });
+      if (fuera) { this.escena.remove(a.modelo); modelos.liberarRecursos(a.modelo); }
+      else this.agentes[restantes++] = a;
+    }
+    this.agentes.length = restantes;
     return choque;
   }
 }

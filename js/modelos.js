@@ -9,17 +9,18 @@ import * as THREE from "three";
 const _geos = new Map();
 const _mats = new Map();
 const _texs = new Map();
+const _compartidos = new WeakSet();
 const HAY_DOM = typeof document !== "undefined";
 const _cargador = HAY_DOM ? new THREE.TextureLoader() : null;
 
 function geo(clave, crear) {
   let g = _geos.get(clave);
-  if (!g) { g = crear(); _geos.set(clave, g); }
+  if (!g) { g = crear(); _geos.set(clave, g); _compartidos.add(g); }
   return g;
 }
 function mat(clave, crear) {
   let m = _mats.get(clave);
-  if (!m) { m = crear(); _mats.set(clave, m); }
+  if (!m) { m = crear(); _mats.set(clave, m); _compartidos.add(m); }
   return m;
 }
 
@@ -43,6 +44,7 @@ function usarTextura(material, nombre, colorConMapa) {
       e.pendientes.length = 0;
     }, undefined, () => { e.estado = -1; e.pendientes.length = 0; });
     e.tex.colorSpace = THREE.SRGBColorSpace;
+    _compartidos.add(e.tex);
     e.tex.wrapS = e.tex.wrapT = THREE.RepeatWrapping;
   }
   if (e.estado === 1) aplicarMapa(material, e.tex, colorConMapa);
@@ -152,7 +154,7 @@ function fusionar(contenedor, { excluir = [], cache = null } = {}) {
     let g = clave ? _fusiones.get(clave) : null;
     if (!g) {
       g = unirGeometrias(lista.map((m) => [m.geometry, new THREE.Matrix4().multiplyMatrices(inv, m.matrixWorld)]));
-      if (clave) _fusiones.set(clave, g);
+      if (clave) { _fusiones.set(clave, g); _compartidos.add(g); }
     }
     const me = new THREE.Mesh(g, material);
     me.castShadow = lista.some((m) => m.castShadow);
@@ -161,6 +163,26 @@ function fusionar(contenedor, { excluir = [], cache = null } = {}) {
     for (const m of lista) m.parent.remove(m);
   }
   return contenedor;
+}
+
+// Libera solo recursos propios; las cachés y los materiales de la pista sobreviven.
+export function liberarRecursos(raiz, conservar = new Set(), liberados = new Set()) {
+  const liberar = (r) => {
+    if (!r || _compartidos.has(r) || conservar.has(r) || liberados.has(r)) return;
+    liberados.add(r);
+    r.dispose();
+  };
+  raiz.traverse((o) => {
+    if (o.isInstancedMesh) liberar(o);
+    liberar(o.geometry);
+    if (!o.material) return;
+    const materiales = Array.isArray(o.material) ? o.material : [o.material];
+    for (const m of materiales) {
+      if (_compartidos.has(m) || conservar.has(m) || liberados.has(m)) continue;
+      for (const valor of Object.values(m)) if (valor && valor.isTexture) liberar(valor);
+      liberar(m);
+    }
+  });
 }
 function unirGeometrias(partes) {
   let n = 0;

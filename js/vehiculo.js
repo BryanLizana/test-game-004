@@ -1,10 +1,11 @@
-import { ANCHO } from "./pista.js?v=0.5.0";
+import { ANCHO } from "./pista.js?v=0.6.1";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
 const G = 9.81;
 const DIST_EJES = 1.95;
 const MEDIO_ANCHO = 0.65;
+const RUEDAS = [[1.1, 0], [-0.85, -0.53], [-0.85, 0.53]];
 export const LARGO_TORITO = 2.65;
 export const ANCHO_TORITO = 1.3;
 const ACEL_VUELCO = 5.4;          // m/s² laterales a los que se levanta una rueda
@@ -19,6 +20,7 @@ const ROCE_MOTOR = 0.06;           // el motor engranado frena un poco (proporci
 export class Vehiculo {
   constructor(pista) {
     this.pista = pista;
+    this.muestra = {};
     this.reiniciar();
   }
 
@@ -39,6 +41,7 @@ export class Vehiculo {
     this.estado = "ok";
     this.motivo = "";
     this.raspando = false;
+    this.derrapando = false;
     this.sacudida = 0;
     this.sigRompemuelle = 0;
     this.sigBache = 0;
@@ -50,7 +53,7 @@ export class Vehiculo {
   paso(dt, entrada, eventos) {
     if (this.estado !== "ok") { this.v *= Math.max(0, 1 - dt * 2); return; }
     const p = this.pista;
-    const m = p.muestra(this.s);
+    const m = p.muestra(this.s, this.muestra);
 
     // --- Dirección (límite dependiente de la velocidad, como un manubrio real) ---
     const giroMax = Math.min(0.5, Math.atan(ACEL_MAX_GIRO * DIST_EJES / Math.max(this.v * this.v, 1)));
@@ -106,7 +109,7 @@ export class Vehiculo {
       this.h = 0;
       this.vy = Math.max(this.vy, 0.8 + this.v * 0.04);
       this.v *= 0.97;
-      this.sacudida = Math.max(this.sacudida, 0.6);
+      this.sacudida = Math.max(this.sacudida, 0.54);
       eventos.push({ tipo: "golpe", fuerza: 0.3 });
     }
     this.suelo = suelo;
@@ -115,11 +118,11 @@ export class Vehiculo {
     while (this.sigBache < p.baches.length && p.baches[this.sigBache].s < this.s - 3) this.sigBache++;
     for (let j = this.sigBache; j < p.baches.length && p.baches[j].s < this.s + 3; j++) {
       const b = p.baches[j];
-      for (const [os, od] of [[1.1, 0], [-0.85, -0.53], [-0.85, 0.53]]) {
+      for (const [os, od] of RUEDAS) {
         const sr = this.s + os;
         if (sr >= b.s && sr - ds * dt < b.s && Math.abs(this.d + od - b.d) < b.r && this.h <= 0.02) {
           this.vy = Math.max(this.vy, 0.35 + this.v * 0.05);
-          this.sacudida = Math.max(this.sacudida, 0.7);
+          this.sacudida = Math.max(this.sacudida, 0.63);
           if (this.v > 13) this.dano += (this.v - 13) * 0.6;
           eventos.push({ tipo: "golpe", fuerza: Math.min(0.7, this.v / 25) });
         }
@@ -129,7 +132,7 @@ export class Vehiculo {
     const rm = p.rompemuelles[this.sigRompemuelle];
     if (rm !== undefined && this.s >= rm && this.s - ds * dt < rm && this.h <= 0.05) {
       this.vy = 0.5 + this.v * 0.18;
-      this.sacudida = 1;
+      this.sacudida = 0.9;
       eventos.push({ tipo: "golpe", fuerza: Math.min(1, this.v / 15) });
       if (this.v > 12) this.dano += (this.v - 12) * 2;
     }
@@ -140,7 +143,7 @@ export class Vehiculo {
         if (this.vy < -3.5) {
           this.dano += (-this.vy - 3.5) * 8;
           eventos.push({ tipo: "golpe", fuerza: Math.min(1, -this.vy / 8) });
-          this.sacudida = 1;
+          this.sacudida = 0.9;
         }
         this.h = 0; this.vy = 0;
       }
@@ -166,7 +169,7 @@ export class Vehiculo {
         this.dano += vNormal * 9;
         this.v *= 1 - Math.min(0.6, vNormal / 12);
         this.psi *= -0.25;
-        this.sacudida = 1;
+        this.sacudida = 0.9;
         eventos.push({ tipo: "golpe", fuerza: Math.min(1, vNormal / 7) });
       } else {
         this.psi = lado > 0 ? Math.min(this.psi, 0) : Math.max(this.psi, 0);
@@ -187,7 +190,7 @@ export class Vehiculo {
   chocar(motivo, eventos) {
     this.estado = "choque";
     this.motivo = motivo;
-    this.sacudida = 1.5;
+    this.sacudida = 1.35;
     eventos.push({ tipo: "choque", motivo, fuerza: 1 });
   }
 

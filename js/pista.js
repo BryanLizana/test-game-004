@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import * as modelos from "./modelos.js?v=0.5.0";
+import * as modelos from "./modelos.js?v=0.6.1";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -43,6 +43,8 @@ function suavizar(arr, ventana) {
 export class Pista {
   constructor(semilla = (Math.random() * 1e9) | 0) {
     this.rand = rng(semilla);
+    this._muestraMundo = {};
+    this._muestraAltura = {};
     this.generarTrazado();
     this.generarDetalles();
   }
@@ -124,11 +126,17 @@ export class Pista {
   }
 
   // ---------- Consultas ----------
-  muestra(s) {
+  muestra(s, out = {}) {
     const f = Math.max(0, Math.min(this.n - 1.001, s / PASO));
     const i = Math.floor(f), t = f - i;
-    const L = (a) => a[i] + (a[i + 1] - a[i]) * t;
-    return { x: L(this.x), y: L(this.y), z: L(this.z), th: L(this.th), k: L(this.k), g: L(this.g), tipo: this.tipo[i] };
+    out.x = this.x[i] + (this.x[i + 1] - this.x[i]) * t;
+    out.y = this.y[i] + (this.y[i + 1] - this.y[i]) * t;
+    out.z = this.z[i] + (this.z[i + 1] - this.z[i]) * t;
+    out.th = this.th[i] + (this.th[i + 1] - this.th[i]) * t;
+    out.k = this.k[i] + (this.k[i + 1] - this.k[i]) * t;
+    out.g = this.g[i] + (this.g[i + 1] - this.g[i]) * t;
+    out.tipo = this.tipo[i];
+    return out;
   }
 
   // Altura sobre la calzada: las veredas son escaleras (pasos horizontales)
@@ -136,12 +144,12 @@ export class Pista {
     if (Math.abs(d) <= ANCHO / 2) return 0;
     if (s < this.finTierra) return 0.05;
     const i = Math.max(0, Math.min(this.n - 1, Math.floor(s / PASO)));
-    return this.escalones[this.idxEscalon[i]].y - this.muestra(s).y;
+    return this.escalones[this.idxEscalon[i]].y - this.muestra(s, this._muestraAltura).y;
   }
 
   // Pista en mal estado: ondulaciones que el torito sin amortiguador siente todo el rato
   rugosidad(s, d) {
-    const amp = (0.014 + 0.03 * (0.5 + 0.5 * Math.sin(s * 0.013 + 1.7))) * 0.9;
+    const amp = (0.014 + 0.027 * (0.5 + 0.5 * Math.sin(s * 0.013 + 1.7))) * 0.9;
     const r = Math.sin(s * 1.9 + d * 1.1) * 0.45 + Math.sin(s * 4.7 - d * 2.3) * 0.35 + Math.sin(s * 9.1 + d * 5.7) * 0.2;
     const zona = s < this.finTierra ? 2.2 : 1;   // la trocha es peor
     return amp * r * zona * (Math.abs(d) > ANCHO / 2 && s >= this.finTierra ? 0.3 : 1);
@@ -166,8 +174,8 @@ export class Pista {
     return d < 0 ? fuera * 0.42 + ondula * Math.min(1, fuera / 6) : -fuera * 0.55 + ondula * 0.5 * Math.min(1, fuera / 6);
   }
 
-  aMundo(s, d, h = 0, out = new THREE.Vector3()) {
-    const m = this.muestra(s);
+  aMundo(s, d, h = 0, out = new THREE.Vector3(), muestra = null) {
+    const m = muestra || this.muestra(s, this._muestraMundo);
     const c = Math.cos(m.th), sn = Math.sin(m.th);
     return out.set(m.x + c * d, m.y + h, m.z + sn * d);
   }
@@ -271,6 +279,7 @@ export class Pista {
       this.bloques.push(g);
     }
     this.construirFinal(escena);
+    this.actualizarVisibles(8);
   }
 
   actualizarVisibles(s) {

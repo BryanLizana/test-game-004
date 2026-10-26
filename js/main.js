@@ -1,13 +1,21 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js?v=0.5.0";
-import { Vehiculo } from "./vehiculo.js?v=0.5.0";
-import { Trafico } from "./trafico.js?v=0.5.0";
-import { Controles } from "./controles.js?v=0.5.0";
-import { Sonido } from "./audio.js?v=0.5.0";
-import { crearTorito } from "./modelos.js?v=0.5.0";
+import { Pista, ANCHO } from "./pista.js?v=0.6.1";
+import { Vehiculo } from "./vehiculo.js?v=0.6.1";
+import { Trafico } from "./trafico.js?v=0.6.1";
+import { Controles } from "./controles.js?v=0.6.1";
+import { Sonido } from "./audio.js?v=0.6.1";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=0.6.1";
 
-const $ = (id) => document.getElementById(id);
+const elementos = new Map();
+const $ = (id) => {
+  if (!elementos.has(id)) elementos.set(id, document.getElementById(id));
+  return elementos.get(id);
+};
+const textoHud = (id, texto) => {
+  const el = $(id), valor = String(texto);
+  if (el.textContent !== valor) el.textContent = valor;
+};
 const PASO_FISICA = 1 / 120;
 
 // ---------- Render ----------
@@ -26,8 +34,9 @@ escena.fog = new THREE.Fog(COLOR_NIEBLA, 35, 290);
 const camara = new THREE.PerspectiveCamera(72, 1, 0.08, 1200);
 
 function redimensionar() {
-  renderer.setSize(innerWidth, innerHeight, false);
-  camara.aspect = innerWidth / innerHeight;
+  const ancho = Math.max(1, innerWidth), alto = Math.max(1, innerHeight);
+  renderer.setSize(ancho, alto, false);
+  camara.aspect = ancho / alto;
   camara.updateProjectionMatrix();
 }
 addEventListener("resize", redimensionar);
@@ -254,6 +263,42 @@ const ojo = partes.ojoConductor || (() => { const o = new THREE.Object3D(); o.po
 // ---------- Modo noche: postes con luz de sodio, faro del torito y Lima iluminada ----------
 let noche = false;
 try { noche = localStorage.getItem("noche") === "1"; } catch (_) { /* sin almacenamiento */ }
+
+const NIVELES_VIBRACION = ["Normal", "Suave", "Mínima", "Apagada"];
+let nivelVibracion = 0;
+try {
+  const guardado = Number(localStorage.getItem("nivelVibracion"));
+  if (Number.isInteger(guardado) && guardado >= 0 && guardado < NIVELES_VIBRACION.length) nivelVibracion = guardado;
+} catch (_) { /* sin almacenamiento */ }
+
+function factorVibracion(v) {
+  if (nivelVibracion === 1) return 0.15 + 0.35 * Math.min(1, Math.max(0, v) / 25);
+  if (nivelVibracion === 2) return 0.12;
+  return nivelVibracion === 3 ? 0 : 1;
+}
+
+function vibrar(patron) {
+  const factor = factorVibracion(vehiculo.v);
+  if (!navigator.vibrate || factor === 0) return;
+  // Solo se escalan los pulsos; las pausas entre ellos conservan su duración.
+  navigator.vibrate(Array.isArray(patron)
+    ? patron.map((ms, i) => i % 2 ? ms : Math.round(ms * factor))
+    : Math.round(patron * factor));
+}
+
+function mostrarVibracion() {
+  const texto = `Vibración: ${NIVELES_VIBRACION[nivelVibracion]}`;
+  $("btn-vibracion").textContent = $("btn-vibracion-p").textContent = texto;
+}
+
+function alternarVibracion() {
+  nivelVibracion = (nivelVibracion + 1) % NIVELES_VIBRACION.length;
+  try { localStorage.setItem("nivelVibracion", String(nivelVibracion)); } catch (_) { /* sin almacenamiento */ }
+  mostrarVibracion();
+  colocarTorito(0);
+  colocarCamara(0, true);
+}
+
 const lucesPoste = Array.from({ length: 4 }, () => {
   const l = new THREE.PointLight(0xffa94d, 40, 22, 1.6);
   escena.add(l);
@@ -307,18 +352,28 @@ function aplicarHora() {
 
 // Las 4 luces dinámicas se mueven a los focos más cercanos delante de la cámara
 let tLuces = 0;
+const postesCerca = new Array(lucesPoste.length).fill(null);
+const distanciasPoste = new Array(lucesPoste.length).fill(Infinity);
 function actualizarLucesPoste(dt) {
   if (!noche || !pista.lamparas || (tLuces -= dt) > 0) return;
   tLuces = 0.2;
   const cam = camara.position;
-  const cerca = pista.lamparas
-    .map((p) => ({ p, d: p.distanceToSquared(cam) }))
-    .filter((o) => o.d < 110 * 110)
-    .sort((a, b) => a.d - b.d)
-    .slice(0, lucesPoste.length);
+  postesCerca.fill(null); distanciasPoste.fill(110 * 110);
+  for (const p of pista.lamparas) {
+    const d = p.distanceToSquared(cam);
+    for (let i = 0; i < lucesPoste.length; i++) {
+      if (d >= distanciasPoste[i]) continue;
+      for (let j = lucesPoste.length - 1; j > i; j--) {
+        distanciasPoste[j] = distanciasPoste[j - 1];
+        postesCerca[j] = postesCerca[j - 1];
+      }
+      distanciasPoste[i] = d; postesCerca[i] = p;
+      break;
+    }
+  }
   lucesPoste.forEach((l, i) => {
-    l.visible = !!cerca[i];
-    if (cerca[i]) l.position.copy(cerca[i].p);
+    l.visible = !!postesCerca[i];
+    if (postesCerca[i]) l.position.copy(postesCerca[i]);
   });
 }
 
@@ -330,7 +385,7 @@ function ajustarCalidad(dt) {
   const fps = cuadros / tCalidad;
   cuadros = 0; tCalidad = 0;
   if (fps < 42 && nivelCalidad === 0) { renderer.setPixelRatio(1); nivelCalidad = 1; }
-  else if (fps < 32 && nivelCalidad === 1) { sombras = false; sol.castShadow = false; nivelCalidad = 2; }
+  else if (fps < 32 && nivelCalidad === 1) { sombras = false; sol.castShadow = false; renderer.shadowMap.enabled = false; nivelCalidad = 2; }
   else if (fps < 26 && nivelCalidad === 2) { renderer.setPixelRatio(0.75); nivelCalidad = 3; }
 }
 
@@ -342,11 +397,26 @@ let estado = "inicio";
 let modoCamara = 1; // 0 = tercera persona, 1 = primera persona
 let tiempoPartida = 0;
 let acumulador = 0;
+let tRevivir = 0, tFin = 0, mostrarFin = null;
+const recursosPista = new Set(Object.values(mat).flat());
 
 function nuevaPartida() {
-  if (pista) for (const b of pista.bloques) { escena.remove(b); b.traverse((o) => o.geometry && o.geometry.dispose()); }
-  if (trafico) for (const a of trafico.agentes) escena.remove(a.modelo);
-  if (pista && pista.final) escena.remove(pista.final);
+  const liberados = new Set();
+  if (pista) for (const b of [...pista.bloques, pista.final]) {
+    escena.remove(b);
+    liberarRecursos(b, recursosPista, liberados);
+  }
+  if (trafico) for (const a of trafico.agentes) {
+    escena.remove(a.modelo);
+    liberarRecursos(a.modelo, recursosPista, liberados);
+  }
+  tRevivir = tFin = 0; mostrarFin = null;
+  eventos.length = 0;
+  controles.limpiar();
+  tGrito = tHud = tLuces = tRuido = 0;
+  cuadros = tCalidad = 0;
+  $("grito").classList.remove("visible");
+  if (partes.adorno) { partes.adorno.userData.ang = partes.adorno.userData.vel = 0; partes.adorno.rotation.z = 0; }
   pista = new Pista();
   pista.construir(escena, mat);
   vehiculo = new Vehiculo(pista);
@@ -385,19 +455,21 @@ function aviso(texto, seg = 2) {
 // ---------- Cámaras ----------
 const vTmp = new THREE.Vector3(), vTmp2 = new THREE.Vector3(), qTmp = new THREE.Quaternion();
 const eShake = new THREE.Euler();
+const muestraTorito = {}, muestraCamara = {};
 let tRuido = 0;
 
 function colocarCamara(dt, instantaneo = false) {
   const v = vehiculo;
-  const m = pista.muestra(v.s);
+  const m = pista.muestra(v.s, muestraCamara);
   const rumbo = m.th + v.psi;
   const adelante = vTmp2.set(Math.sin(rumbo), 0, -Math.cos(rumbo));
   tRuido += dt;
-  const intensidad = (Math.min(1, v.v / 25) * 0.6 + v.sacudida) * 0.9;
+  const intensidad = Math.min(1.701, (Math.min(1, v.v / 25) * 0.6 + v.sacudida) * 0.9) * factorVibracion(v.v);
   if (partes.conductor) partes.conductor.visible = modoCamara === 0;
 
+  const fovAnterior = camara.fov;
   if (modoCamara === 1) {
-    torito.updateMatrixWorld(true);
+    torito.updateWorldMatrix(true, true);
     ojo.getWorldPosition(camara.position);
     ojo.getWorldQuaternion(camara.quaternion);
     // Vibración del asiento: más fuerte a más velocidad y en golpes
@@ -417,7 +489,7 @@ function colocarCamara(dt, instantaneo = false) {
     camara.lookAt(mira);
     camara.fov = 66 + Math.min(16, v.v * 0.55);
   }
-  camara.updateProjectionMatrix();
+  if (camara.fov !== fovAnterior) camara.updateProjectionMatrix();
 }
 
 function alternarCamara() {
@@ -429,12 +501,13 @@ function alternarCamara() {
 // ---------- Torito en el mundo ----------
 function colocarTorito(dt) {
   const v = vehiculo;
-  const m = pista.muestra(v.s);
-  pista.aMundo(v.s, v.d, v.alturaSuelo, torito.position);
+  const m = pista.muestra(v.s, muestraTorito);
+  pista.aMundo(v.s, v.d, v.alturaSuelo, torito.position, m);
   const rumbo = m.th + v.psi;
+  const factor = factorVibracion(v.v);
   // Sin amortiguador: cada rueda copia las ondulaciones de la pista
-  const rf = pista.rugosidad(v.s + 1.1, v.d);
-  const ri = pista.rugosidad(v.s - 0.85, v.d - 0.53), rd = pista.rugosidad(v.s - 0.85, v.d + 0.53);
+  const rf = pista.rugosidad(v.s + 1.1, v.d) * factor;
+  const ri = pista.rugosidad(v.s - 0.85, v.d - 0.53) * factor, rd = pista.rugosidad(v.s - 0.85, v.d + 0.53) * factor;
   const enSuelo = v.h <= 0.01;
   torito.position.y += enSuelo ? (rf + ri + rd) / 3 : 0;
   const cabeceo = -Math.atan(m.g * Math.cos(v.psi)) + (enSuelo ? (rf - (ri + rd) / 2) / 1.95 : 0);
@@ -451,19 +524,17 @@ function colocarTorito(dt) {
   for (const r of partes.ruedasTraseras || []) r.rotation.x -= giroRueda;
   if (partes.direccion) partes.direccion.rotation.y = -v.giro * 1.6;
   // Aguja del velocímetro (0–80 km/h en ~260°) y adorno colgante que se mece
-  if (partes.aguja) partes.aguja.rotation.z = 2.2 - Math.min(80, v.kmh) / 80 * 4.5 + Math.sin(tRuido * 40) * 0.01 * v.v;
+  if (partes.aguja) partes.aguja.rotation.z = 2.2 - Math.min(80, v.kmh) / 80 * 4.5 + Math.sin(tRuido * 40) * 0.01 * v.v * factor;
   if (partes.adorno) {
     const pendulo = partes.adorno.userData;
     pendulo.ang = pendulo.ang || 0; pendulo.vel = pendulo.vel || 0;
-    pendulo.vel += (-pendulo.ang * 30 - v.acelLat * 0.6 - pendulo.vel * 1.5 + (Math.random() - 0.5) * v.sacudida * 40) * dt;
+    pendulo.vel += (-pendulo.ang * 30 - v.acelLat * 0.6 - pendulo.vel * 1.5 + (Math.random() - 0.5) * v.sacudida * 40 * factor) * dt;
     pendulo.ang += pendulo.vel * dt;
     partes.adorno.rotation.z = pendulo.ang;
   }
 
   sol.position.copy(torito.position).add(vTmp.set(18, 40, 12));
   sol.target.position.copy(torito.position);
-  cielo.position.copy(camara.position);
-  cielo.position.y += ALTO_CIELO / 2 - BAJO_CIELO;
 }
 
 // ---------- HUD ----------
@@ -476,11 +547,13 @@ function actualizarHud(dt) {
   if (tHud > 0) return;
   tHud = 0.1;
   const v = vehiculo;
-  $("hud-vel").textContent = Math.round(v.kmh);
-  $("hud-dist").textContent = `Faltan ${Math.max(0, Math.round(pista.largo - 60 - v.s))} m`;
+  textoHud("hud-vel", Math.round(v.kmh));
+  textoHud("hud-dist", `Faltan ${Math.max(0, Math.round(pista.largo - 60 - v.s))} m`);
+  $("b-centrar").classList.toggle("oculto", !controles.usandoSensor);
   const barra = (id, pct, invertido) => {
     const b = $(id);
-    b.style.width = `${Math.max(0, Math.min(100, pct))}%`;
+    const ancho = `${Math.max(0, Math.min(100, pct))}%`;
+    if (b.style.width !== ancho) b.style.width = ancho;
     const malo = invertido ? 100 - pct : pct;
     b.style.background = malo > 75 ? "#ff3b3b" : malo > 45 ? "#ffb300" : "#3ecf5a";
   };
@@ -496,9 +569,10 @@ function bucle(ahora) {
   requestAnimationFrame(bucle);
   const dt = Math.min(0.05, (ahora - ultimo) / 1000);
   ultimo = ahora;
-  if (!vehiculo) return;
+  if (!vehiculo || document.hidden) return;
 
   if (estado === "jugando" || estado === "terminando") {
+    if (estado === "jugando" && tRevivir > 0 && (tRevivir -= dt) <= 0) revivir();
     const entrada = controles.actualizar(dt);
     acumulador += dt;
     while (acumulador >= PASO_FISICA) {
@@ -507,8 +581,9 @@ function bucle(ahora) {
     }
     if (estado === "jugando") tiempoPartida += dt;
     if (tInvulnerable > 0 && (tInvulnerable -= dt) <= 0) $("vidas").classList.remove("invulnerable");
+    vehiculo.invulnerable = tInvulnerable > 0;
     const choque = trafico.actualizar(dt, vehiculo);
-    if (trafico.gritos.length) gritar(trafico.gritos.splice(0).pop());
+    if (trafico.gritos.length) { gritar(trafico.gritos[trafico.gritos.length - 1]); trafico.gritos.length = 0; }
     if (choque && vehiculo.estado === "ok") procesarChoque(choque);
     procesarEventos();
     pista.actualizarVisibles(vehiculo.s);
@@ -519,8 +594,15 @@ function bucle(ahora) {
     });
     actualizarHud(dt);
   }
-  colocarTorito(dt);
-  colocarCamara(dt);
+  if (estado === "terminando" && (tFin -= dt) <= 0 && mostrarFin) {
+    const mostrar = mostrarFin; mostrarFin = null; mostrar();
+  }
+  if (estado === "jugando" || estado === "terminando") {
+    colocarTorito(dt);
+    colocarCamara(dt);
+  }
+  cielo.position.copy(camara.position);
+  cielo.position.y += ALTO_CIELO / 2 - BAJO_CIELO;
   actualizarLucesPoste(dt);
   if (estado === "jugando") ajustarCalidad(dt);
   renderer.render(escena, camara);
@@ -556,10 +638,10 @@ function perderVida(motivo) {
   vidas--;
   dibujarVidas(vidas);
   sonido.golpe(1);
-  if (navigator.vibrate) navigator.vibrate([135, 60, 225]);
+  vibrar([122, 60, 203]);
   if (vidas <= 0) return terminar(false, motivo);
   aviso(motivo, 1.6);
-  setTimeout(revivir, 1600);
+  tRevivir = 1.6;
 }
 
 function revivir() {
@@ -567,6 +649,9 @@ function revivir() {
   const v = vehiculo;
   Object.assign(v, { estado: "ok", motivo: "", psi: 0, d: ANCHO / 4, v: 4, h: 0, vy: 0, inclinacion: 0, balanceo: 0, giro: 0 });
   v.dano = Math.min(v.dano, 60);
+  v.suelo = pista.alturaLateral(v.d, v.s);
+  v.acelLat = v.sacudida = v.ladoVuelco = 0;
+  v.raspando = v.derrapando = false;
   torito.userData.vuelco = 0;
   tInvulnerable = 2.5;
   $("vidas").classList.add("invulnerable");
@@ -592,10 +677,10 @@ function procesarChoque({ agente, vRel }) {
     vehiculo.dano += vRel * 3;
     vehiculo.v *= 0.55;
     vehiculo.vy = Math.max(vehiculo.vy, 1.5 + vRel * 0.12);
-    vehiculo.sacudida = 1.3;
+    vehiculo.sacudida = 1.17;
     sonido.golpe(Math.min(1, vRel / 10));
     aviso("¡Te metiste al desmonte!", 1.5);
-    if (navigator.vibrate) navigator.vibrate(108);
+    vibrar(97);
     return;
   }
   if (vRel > 9) {
@@ -604,18 +689,18 @@ function procesarChoque({ agente, vRel }) {
   }
   vehiculo.dano += vRel * 4 + 2;
   vehiculo.v = Math.max(0, agente.v + (vehiculo.v - agente.v) * -0.2);
-  vehiculo.sacudida = 1.2;
+  vehiculo.sacudida = 1.08;
   agente.v = 0;
   sonido.golpe(Math.min(1, vRel / 9));
   aviso("¡Pum! Cuidado", 1.2);
-  if (navigator.vibrate) navigator.vibrate(72);
+  vibrar(72);
 }
 
 function procesarEventos() {
-  for (const e of eventos.splice(0)) {
+  for (const e of eventos) {
     if (e.tipo === "golpe") {
       sonido.golpe(e.fuerza);
-      if (navigator.vibrate) navigator.vibrate(Math.round((30 + e.fuerza * 80) * 0.9));
+      vibrar(Math.round(Math.min(89.1, (30 + e.fuerza * 80) * 0.9)));
     } else if (e.tipo === "aviso") {
       aviso(e.texto, 2.5);
     } else if (e.tipo === "choque") {
@@ -624,6 +709,7 @@ function procesarEventos() {
       terminar(true, "¡Llegaste a la avenida con vida!");
     }
   }
+  eventos.length = 0;
 }
 
 function terminar(gano, motivo) {
@@ -636,7 +722,9 @@ function terminar(gano, motivo) {
   try { record = +(localStorage.getItem("recordMetros") || 0); } catch (_) { /* sin almacenamiento */ }
   const nuevo = metros > record;
   if (nuevo) try { localStorage.setItem("recordMetros", metros); } catch (_) { /* sin almacenamiento */ }
-  setTimeout(() => {
+  tRevivir = 0;
+  tFin = gano ? 0.6 : 1.8;
+  mostrarFin = () => {
     estado = "fin";
     $("fin-titulo").textContent = gano ? "¡LLEGASTE!" : "¡PUM!";
     $("fin-msg").textContent = motivo;
@@ -648,11 +736,13 @@ function terminar(gano, motivo) {
     $("hud").classList.add("oculto");
     $("fin").classList.add("visible");
     sonido.actualizar({ rpm: 0, v: 0, chirrido: 0, motorVivo: false });
-  }, gano ? 600 : 1800);
+  };
 }
 
 // ---------- Interfaz ----------
 function empezar() {
+  sonido.iniciar();
+  sonido.silenciar(false);
   $("inicio").classList.remove("visible");
   $("fin").classList.remove("visible");
   $("pausa").classList.remove("visible");
@@ -672,15 +762,16 @@ async function pantallaCompleta() {
 }
 
 $("btn-jugar").addEventListener("click", async () => {
-  sonido.iniciar();
-  const sensores = await controles.activarSensores();   // debe pedirse dentro del gesto (iOS)
-  pantallaCompleta();
-  empezar();
-  // Si el giroscopio responde, se ocultan las flechas táctiles
-  setTimeout(() => {
-    const usa = controles.usandoSensor && sensores;
-    $("b-centrar").classList.toggle("oculto", !usa);
-  }, 600);
+  if ($("btn-jugar").disabled) return;
+  $("btn-jugar").disabled = true;
+  try {
+    sonido.iniciar();
+    const sensores = controles.activarSensores();   // permiso dentro del gesto (iOS)
+    pantallaCompleta();                            // fullscreen también necesita el gesto
+    await sensores;
+    empezar();
+    if (document.hidden) pausar();
+  } finally { $("btn-jugar").disabled = false; }
 });
 $("btn-otra").addEventListener("click", empezar);
 $("btn-invertir").addEventListener("click", () => {
@@ -688,6 +779,8 @@ $("btn-invertir").addEventListener("click", () => {
 });
 $("btn-invertir").textContent = `Invertir giro: ${controles.invertir ? "SÍ" : "NO"}`;
 $("btn-camara-ini").addEventListener("click", alternarCamara);
+$("btn-vibracion").addEventListener("click", alternarVibracion);
+$("btn-vibracion-p").addEventListener("click", alternarVibracion);
 $("btn-hora").addEventListener("click", () => {
   noche = !noche;
   try { localStorage.setItem("noche", noche ? "1" : "0"); } catch (_) { /* sin almacenamiento */ }
@@ -698,6 +791,7 @@ $("btn-hora").addEventListener("click", () => {
 function pausar() {
   if (estado === "jugando") {
     estado = "pausa";
+    controles.limpiar();
     sonido.silenciar(true);
     $("pausa").classList.add("visible");
   } else if (estado === "pausa") {
@@ -713,13 +807,24 @@ $("btn-seguir").addEventListener("click", pausar);
 $("btn-calibrar-p").addEventListener("click", () => { controles.calibrar(); pausar(); });
 $("btn-salir").addEventListener("click", () => {
   estado = "inicio";
+  tRevivir = tFin = 0; mostrarFin = null;
+  controles.limpiar();
   sonido.silenciar(false);
   sonido.actualizar({ rpm: 0, v: 0, chirrido: 0, motorVivo: false });
   $("pausa").classList.remove("visible");
   $("hud").classList.add("oculto");
   $("inicio").classList.add("visible");
 });
-document.addEventListener("visibilitychange", () => { if (document.hidden && estado === "jugando") pausar(); });
+document.addEventListener("visibilitychange", () => {
+  if (document.hidden) {
+    if (estado === "jugando") pausar();
+    sonido.silenciar(true);
+  } else {
+    ultimo = performance.now();
+    if (estado !== "pausa") sonido.silenciar(false);
+  }
+});
+addEventListener("blur", () => { if (estado === "jugando") pausar(); });
 
 controles.alCamara = alternarCamara;
 controles.alClaxon = (on) => {
@@ -740,6 +845,7 @@ controles.botonMantener($("b-centrar"), () => { controles.calibrar(); aviso("Tim
 // Escena de fondo detrás del menú mientras se juega la primera vez
 nuevaPartida();
 aplicarHora();
+mostrarVibracion();
 $("version-pausa").textContent = $("version").textContent;
 $("btn-jugar").disabled = false;
 $("btn-jugar").textContent = "JUGAR";
