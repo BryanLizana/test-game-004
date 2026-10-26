@@ -7,7 +7,7 @@
   <meta name="mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>¡Sin Frenos! Torito</title>
-  <link rel="stylesheet" href="css/style.css?v=0.6.1">
+  <link rel="stylesheet" href="css/style.css?v=0.7.2">
   <script type="importmap">
     {
       "imports": {
@@ -29,17 +29,18 @@
     <div class="acciones">
       <button id="btn-jugar" class="btn" disabled>CARGANDO…</button>
       <div class="opciones">
+        <button id="btn-modo" class="btn-chico">Modo: Sin frenos</button>
         <button id="btn-invertir" class="btn-chico">Invertir giro: NO</button>
         <button id="btn-camara-ini" class="btn-chico">Cámara: 1ª persona</button>
         <button id="btn-hora" class="btn-chico">Hora: Día ☀️</button>
         <button id="btn-vibracion" class="btn-chico">Vibración: Normal</button>
       </div>
-      <p class="ayuda">
+      <p class="ayuda" id="ayuda-controles">
         <b>Celular:</b> pon el teléfono horizontal y gíralo como un timón.<br>
         <b>PC:</b> ← → dirección · S freno (se gasta) · H claxon · C cámara
       </p>
       <p class="aviso-girar">↻ Gira el celular en horizontal</p>
-      <span id="version" class="version">v0.6.1</span>
+      <span id="version" class="version">v0.7.2</span>
     </div>
   </section>
 
@@ -91,20 +92,21 @@
       </div>
     </div>
 
-    <!-- Flechas siempre visibles en las esquinas inferiores (se pueden usar junto con el giroscopio) -->
+    <!-- Cada mitad captura dirección; los pedales y menús tienen prioridad. -->
+    <div id="zona-izq" class="zona-giro zona-izq" aria-hidden="true"></div>
+    <div id="zona-der" class="zona-giro zona-der" aria-hidden="true"></div>
+    <button id="b-izq" class="btn-ctrl flecha direccion-izq" aria-label="Izquierda">&#9664;</button>
+    <button id="b-der" class="btn-ctrl flecha direccion-der" aria-label="Derecha">&#9654;</button>
     <div class="ctrl ctrl-izq">
-      <button id="b-izq" class="btn-ctrl flecha" aria-label="Izquierda">◀</button>
-      <div class="col">
-        <button id="b-centrar" class="btn-ctrl chico oculto">⟲ centrar</button>
-        <button id="b-claxon" class="btn-ctrl chico" aria-label="Claxon">📯</button>
-      </div>
+      <button id="b-centrar" class="btn-ctrl chico oculto">&#10226; centrar</button>
+      <button id="b-claxon" class="btn-ctrl chico" aria-label="Claxon">&#128239;</button>
     </div>
     <div class="ctrl ctrl-der">
       <button id="b-freno" class="btn-ctrl freno">FRENO</button>
-      <button id="b-der" class="btn-ctrl flecha" aria-label="Derecha">▶</button>
+      <button id="b-acelerador" class="btn-ctrl acelerador oculto">ACELERAR</button>
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=0.6.1"></script>
+  <script type="module" src="js/main.js?v=0.7.2"></script>
 </body>
 </html>

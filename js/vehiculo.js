@@ -1,4 +1,4 @@
-import { ANCHO } from "./pista.js?v=0.6.1";
+import { ANCHO } from "./pista.js?v=0.7.2";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
@@ -10,6 +10,7 @@ export const LARGO_TORITO = 2.65;
 export const ANCHO_TORITO = 1.3;
 const ACEL_VUELCO = 5.4;          // m/s² laterales a los que se levanta una rueda
 const ACEL_MAX_GIRO = 7.5;        // giro máximo del manubrio expresado en aceleración lateral
+const RADIO_GIRO_CARRERA = 6.5;   // manejo arcade: conserva dirección en curvas rápidas
 const PSI_MAX = 0.9;              // en una calle angosta no se puede dar media vuelta
 const FRENO = 1.5;                 // m/s² mientras dura (suave: solo ayuda)
 const VEL_MIN_FRENO = 4.5;         // por debajo de esto el freno ya no agarra (no se detiene)
@@ -18,8 +19,9 @@ const ENFRIA_FRENO = 1.2;          // % por segundo que recupera cuando no se us
 const ROCE_MOTOR = 0.06;           // el motor engranado frena un poco (proporcional a v)
 
 export class Vehiculo {
-  constructor(pista) {
+  constructor(pista, modo = "sinFrenos") {
     this.pista = pista;
+    this.modo = modo;
     this.muestra = {};
     this.reiniciar();
   }
@@ -28,7 +30,7 @@ export class Vehiculo {
     this.s = 8;
     this.d = ANCHO / 4;     // en Perú se maneja por la derecha
     this.psi = 0;           // rumbo relativo a la calle
-    this.v = 4;
+    this.v = this.modo === "carrera" ? 0 : 4;
     this.giro = 0;          // ángulo del manubrio (rad)
     this.rpm = 1500;
     this.h = 0; this.vy = 0; // altura sobre la pista (saltos)
@@ -54,9 +56,11 @@ export class Vehiculo {
     if (this.estado !== "ok") { this.v *= Math.max(0, 1 - dt * 2); return; }
     const p = this.pista;
     const m = p.muestra(this.s, this.muestra);
+    const carrera = this.modo === "carrera";
 
     // --- Dirección (límite dependiente de la velocidad, como un manubrio real) ---
-    const giroMax = Math.min(0.5, Math.atan(ACEL_MAX_GIRO * DIST_EJES / Math.max(this.v * this.v, 1)));
+    const giroMax = carrera ? Math.atan(DIST_EJES / RADIO_GIRO_CARRERA)
+      : Math.min(0.5, Math.atan(ACEL_MAX_GIRO * DIST_EJES / Math.max(this.v * this.v, 1)));
     const objetivo = entrada.giro * giroMax;
     this.giro += Math.max(-dt * 2.2, Math.min(dt * 2.2, objetivo - this.giro));
 
@@ -64,14 +68,21 @@ export class Vehiculo {
     const pendiente = Math.atan(m.g);
     let a = G * Math.sin(pendiente) * Math.cos(this.psi) - 0.018 * G - 0.0016 * this.v * this.v;
     a -= ROCE_MOTOR * this.v;
-    if (entrada.freno && this.freno > 0 && this.h <= 0 && this.v > VEL_MIN_FRENO) {
+    if (this.modo === "carrera") {
+      // El freno domina al acelerador y puede sostener el torito en la pendiente.
+      if (this.h <= 0) {
+        if (entrada.freno) a -= 8;
+        else if (entrada.acelerador) a += 5.8 * Math.max(0, 1 - this.v / 32);
+      }
+      this.freno = 100;
+    } else if (entrada.freno && this.freno > 0 && this.h <= 0 && this.v > VEL_MIN_FRENO) {
       a -= FRENO * Math.min(1, (this.v - VEL_MIN_FRENO) / 2);
       this.freno = Math.max(0, this.freno - DESGASTE_FRENO * dt);
       if (this.freno === 0) eventos.push({ tipo: "aviso", texto: "¡Se acabó el freno!" });
     } else if (!entrada.freno) {
       this.freno = Math.min(100, this.freno + ENFRIA_FRENO * dt);
     }
-    if (this.v < 2) a += 0.8;   // en bajada nunca se queda parado
+    if (this.modo !== "carrera" && this.v < 2) a += 0.8;
     // Revoluciones solo para el sonido: caja automática imaginaria de 4 cambios
     const cambio = Math.min(3, Math.floor(this.kmh / 22));
     this.rpm = 1800 + Math.min(1, (this.kmh - cambio * 22) / 22) * 4800 + cambio * 300;
@@ -82,18 +93,23 @@ export class Vehiculo {
     this.acelLat = this.v * guiñada;
     const agarre = (p.enTierra(this.s) ? 0.62 : 0.85) * G;   // en la tierra patina más
     this.derrapando = Math.abs(this.acelLat) > agarre;
-    if (this.derrapando) {
+    if (this.derrapando && !carrera) {
       guiñada = Math.sign(guiñada) * agarre / Math.max(this.v, 0.1);
       this.acelLat = Math.sign(this.acelLat) * agarre;
     }
     const exceso = Math.abs(this.acelLat) - ACEL_VUELCO;
-    if (exceso > 0) {
+    if (carrera) {
+      // La inclinación es solo visual: doblar nunca acumula un vuelco.
+      this.ladoVuelco = Math.sign(this.acelLat);
+      const visual = Math.min(0.35, Math.abs(this.acelLat) * 0.018);
+      this.inclinacion += (visual - this.inclinacion) * Math.min(1, dt * 6);
+    } else if (exceso > 0) {
       this.ladoVuelco = Math.sign(this.acelLat);
       this.inclinacion += exceso * 0.32 * dt;
     } else {
       this.inclinacion = Math.max(0, this.inclinacion - 1.4 * dt);
     }
-    if (this.inclinacion >= 1) return this.chocar("¡Te volcaste en la curva!", eventos);
+    if (!carrera && this.inclinacion >= 1) return this.chocar("¡Te volcaste en la curva!", eventos);
 
     const ds = (this.v * Math.cos(this.psi)) / Math.max(0.2, 1 - this.d * m.k);
     this.s += ds * dt;
@@ -182,7 +198,8 @@ export class Vehiculo {
     if (this.s >= p.largo - 60) { this.estado = "llegada"; eventos.push({ tipo: "llegada" }); }
 
     // Balanceo visual: inclinación por fuerza centrífuga + rueda levantada
-    const objetivoBalanceo = this.acelLat * 0.012 + this.ladoVuelco * this.inclinacion * 0.5;
+    let objetivoBalanceo = this.acelLat * 0.012 + this.ladoVuelco * this.inclinacion * 0.5;
+    if (carrera) objetivoBalanceo = Math.max(-0.32, Math.min(0.32, objetivoBalanceo));
     this.balanceo += (objetivoBalanceo - this.balanceo) * Math.min(1, dt * 8);
     this.sacudida = Math.max(0, this.sacudida - dt * 2.5);
   }

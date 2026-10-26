@@ -13,11 +13,11 @@ export class Controles {
     this.giro = 0;
     this.freno = false;
     this.teclas = new Set();
-    this.botones = { izq: false, der: false, freno: false };
+    this.botones = { izq: false, der: false, freno: false, acelerador: false };
     this.sensor = { activo: false, crudo: 0, base: null, filtrado: 0 };
     this.sensorConectado = false;
     this.soltadores = [];
-    this.entrada = { giro: 0, freno: false };
+    this.entrada = { giro: 0, freno: false, acelerador: false };
     this.invertir = leerAlmacen("invertirGiro") === "1";
     this.alCamara = () => {};
     this.alClaxon = () => {};
@@ -72,6 +72,7 @@ export class Controles {
     this.teclas.clear();
     for (const soltar of this.soltadores) soltar();
     this.botones.izq = this.botones.der = this.botones.freno = false;
+    this.botones.acelerador = false;
     this.giro = 0; this.freno = false;
     this.sensor.filtrado = 0;
     this.alClaxon(false);
@@ -141,6 +142,7 @@ export class Controles {
       this.giro -= Math.sign(this.giro) * Math.min(Math.abs(this.giro), 3 * dt);
     }
     this.entrada.giro = this.giro; this.entrada.freno = this.freno;
+    this.entrada.acelerador = t.has("w") || t.has("arrowup") || this.botones.acelerador;
     return this.entrada;
   }
 }

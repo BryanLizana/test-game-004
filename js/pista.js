@@ -1,5 +1,5 @@
 import * as THREE from "three";
-import * as modelos from "./modelos.js?v=0.6.1";
+import * as modelos from "./modelos.js?v=0.7.2";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -139,17 +139,40 @@ export class Pista {
     return out;
   }
 
-  // Altura sobre la calzada: las veredas son escaleras (pasos horizontales)
+  tipoVereda(s, lado) {
+    const bloque = Math.floor((s - this.finTierra + (lado < 0 ? 17 : 0)) / 36);
+    const tipo = ((bloque % 7) + 7) % 7;
+    return tipo === 2 ? "tierra" : tipo === 4 ? "escalera" : "concreto";
+  }
+
+  // Perfil compartido por la malla y las consultas de suelo.
+  alturaVereda(s, lado) {
+    const m = this.muestra(s, this._muestraAltura);
+    const tipo = this.tipoVereda(s, lado);
+    const tramo = s - this.finTierra + (lado < 0 ? 17 : 0);
+    const local = ((tramo % 36) + 36) % 36;
+    const mezcla = Math.min(1, local / 3, (36 - local) / 3);
+    if (tipo === "escalera" && m.g > 0.16) {
+      const i = Math.max(0, Math.min(this.n - 1, Math.floor(s / PASO)));
+      const escalon = this.escalones[this.idxEscalon[i]].y - m.y;
+      return ALTO_VEREDA + (escalon - ALTO_VEREDA) * mezcla;
+    }
+    if (tipo === "tierra") return ALTO_VEREDA - 0.09 * mezcla;
+    const acceso = ((s + (lado < 0 ? 9 : 0)) % 23 + 23) % 23;
+    const rampa = Math.max(0, 1 - Math.abs(acceso - 11.5) / 1.5);
+    return ALTO_VEREDA - 0.125 * rampa;
+  }
+
+  // Altura sobre la calzada: sardinel, rampas y escaleras puntuales.
   alturaLateral(d, s) {
     if (Math.abs(d) <= ANCHO / 2) return 0;
     if (s < this.finTierra) return 0.05;
-    const i = Math.max(0, Math.min(this.n - 1, Math.floor(s / PASO)));
-    return this.escalones[this.idxEscalon[i]].y - this.muestra(s, this._muestraAltura).y;
+    return this.alturaVereda(s, Math.sign(d));
   }
 
   // Pista en mal estado: ondulaciones que el torito sin amortiguador siente todo el rato
-  rugosidad(s, d) {
-    const amp = (0.014 + 0.027 * (0.5 + 0.5 * Math.sin(s * 0.013 + 1.7))) * 0.9;
+  rugosidad(s, d, pico = 1) {
+    const amp = Math.min(0.041 * pico, 0.014 + 0.027 * (0.5 + 0.5 * Math.sin(s * 0.013 + 1.7))) * 0.9;
     const r = Math.sin(s * 1.9 + d * 1.1) * 0.45 + Math.sin(s * 4.7 - d * 2.3) * 0.35 + Math.sin(s * 9.1 + d * 5.7) * 0.2;
     const zona = s < this.finTierra ? 2.2 : 1;   // la trocha es peor
     return amp * r * zona * (Math.abs(d) > ANCHO / 2 && s >= this.finTierra ? 0.3 : 1);
@@ -332,7 +355,7 @@ export class Pista {
     calzada(Math.max(i0, iT), i1, mat.asfalto, 4);
     if (i0 < iT) this.construirCerro(grupo, i0, Math.min(i1, iT), mat, tira, nuevo, malla);
 
-    // Veredas en escalera: huella horizontal + contrahuella + sardinel
+    // Veredas mixtas con sardinel, rebajes y escaleras puntuales.
     const vereda = nuevo();
     const cuad = (buf, pts) => {     // pts: [s, d, yAbs, u, v] x4 en orden de tira
       const base = buf.pos.length / 3;
@@ -343,24 +366,36 @@ export class Pista {
       }
       buf.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
     };
-    const e0 = this.idxEscalon[i0], e1 = this.idxEscalon[Math.max(i0, i1 - 1)];
-    for (let e = e0; e <= e1; e++) {
-      const esc = this.escalones[e], sig = this.escalones[e + 1];
-      if (esc.i0 < iT) continue;   // en la trocha no hay veredas
-      const sa = esc.i0 * PASO, sb = esc.i1 * PASO;
+    const tierraVereda = nuevo(), juntas = nuevo();
+    for (let i = Math.max(i0, iT); i < i1; i++) {
       for (const sg of [-1, 1]) {
         const dIn = sg * ANCHO / 2, dOut = sg * (ANCHO / 2 + VEREDA);
-        cuad(vereda, [[sa, dIn, esc.y, 0, sa / 2], [sa, dOut, esc.y, VEREDA / 2, sa / 2],
-                      [sb, dIn, esc.y, 0, sb / 2], [sb, dOut, esc.y, VEREDA / 2, sb / 2]]);
-        cuad(vereda, [[sa, dIn, this.y[esc.i0], 0, 0], [sa, dIn, esc.y, 0, 0.1],
-                      [sb, dIn, this.y[esc.i1], 0.5, 0], [sb, dIn, esc.y, 0.5, 0.1]]);
-        if (sig) {
-          cuad(vereda, [[sb, dIn, sig.y, 0, 0], [sb, dOut, sig.y, VEREDA / 2, 0],
-                        [sb, dIn, esc.y, 0, 0.1], [sb, dOut, esc.y, VEREDA / 2, 0.1]]);
+        const buf = this.tipoVereda(i + 0.5, sg) === "tierra" ? tierraVereda : vereda;
+        // Medios metros permiten seguir curvas y rebajes sin caras largas torcidas.
+        for (let j = 0; j < 2; j++) {
+          const sa = i + j * 0.5, sb = sa + 0.5;
+          const ya = this.muestra(sa).y + this.alturaVereda(sa, sg);
+          const yb = this.muestra(sb).y + this.alturaVereda(sb - 0.00001, sg);
+          cuad(buf, [[sa, dIn, ya, 0, sa / 2], [sa, dOut, ya, VEREDA / 2, sa / 2],
+                     [sb, dIn, yb, 0, sb / 2], [sb, dOut, yb, VEREDA / 2, sb / 2]]);
+          cuad(vereda, [[sa, dIn, this.muestra(sa).y, 0, 0], [sa, dIn, ya, 0, 0.1],
+                        [sb, dIn, this.muestra(sb).y, 0.5, 0], [sb, dIn, yb, 0.5, 0.1]]);
+          const siguiente = this.muestra(sb).y + this.alturaVereda(sb, sg);
+          if (Math.abs(siguiente - yb) > 0.005) {
+            cuad(buf, [[sb, dIn, siguiente, 0, 0], [sb, dOut, siguiente, 1, 0],
+                       [sb, dIn, yb, 0, 0.1], [sb, dOut, yb, 1, 0.1]]);
+          }
+          if (j === 0 && i % 3 === 0 && buf === vereda && this.tipoVereda(i, sg) !== "escalera") {
+            const yj = this.muestra(sa + 0.025).y + this.alturaVereda(sa + 0.025, sg);
+            cuad(juntas, [[sa, dIn, ya + 0.002, 0, 0], [sa, dOut, ya + 0.002, 1, 0],
+                          [sa + 0.025, dIn, yj + 0.002, 0, 1], [sa + 0.025, dOut, yj + 0.002, 1, 1]]);
+          }
         }
       }
     }
     malla(vereda, mat.vereda);
+    malla(tierraVereda, mat.tierra);
+    malla(juntas, mat.asfalto);
 
     // Miradores: baranda de concreto y la ladera cayendo hacia Lima
     for (const mir of this.miradores) {

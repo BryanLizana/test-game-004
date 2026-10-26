@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js?v=0.6.1";
-import { Vehiculo } from "./vehiculo.js?v=0.6.1";
-import { Trafico } from "./trafico.js?v=0.6.1";
-import { Controles } from "./controles.js?v=0.6.1";
-import { Sonido } from "./audio.js?v=0.6.1";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=0.6.1";
+import { Pista, ANCHO } from "./pista.js?v=0.7.2";
+import { Vehiculo } from "./vehiculo.js?v=0.7.2";
+import { Trafico } from "./trafico.js?v=0.7.2";
+import { Controles } from "./controles.js?v=0.7.2";
+import { Sonido } from "./audio.js?v=0.7.2";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=0.7.2";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -280,10 +280,12 @@ function factorVibracion(v) {
 function vibrar(patron) {
   const factor = factorVibracion(vehiculo.v);
   if (!navigator.vibrate || factor === 0) return;
+  const pulsos = Array.isArray(patron) ? patron.filter((_, i) => i % 2 === 0) : [patron];
+  const limite = modoJuego === "carrera" ? Math.max(72, Math.max(...pulsos) * 0.9) : Infinity;
   // Solo se escalan los pulsos; las pausas entre ellos conservan su duración.
   navigator.vibrate(Array.isArray(patron)
-    ? patron.map((ms, i) => i % 2 ? ms : Math.round(ms * factor))
-    : Math.round(patron * factor));
+    ? patron.map((ms, i) => i % 2 ? ms : Math.round(Math.min(ms, limite) * factor))
+    : Math.round(Math.min(patron, limite) * factor));
 }
 
 function mostrarVibracion() {
@@ -394,6 +396,8 @@ const controles = new Controles();
 const sonido = new Sonido();
 let pista, vehiculo, trafico;
 let estado = "inicio";
+let modoJuego = "sinFrenos";
+try { if (localStorage.getItem("modoJuego") === "carrera") modoJuego = "carrera"; } catch (_) {}
 let modoCamara = 1; // 0 = tercera persona, 1 = primera persona
 let tiempoPartida = 0;
 let acumulador = 0;
@@ -419,7 +423,7 @@ function nuevaPartida() {
   if (partes.adorno) { partes.adorno.userData.ang = partes.adorno.userData.vel = 0; partes.adorno.rotation.z = 0; }
   pista = new Pista();
   pista.construir(escena, mat);
-  vehiculo = new Vehiculo(pista);
+  vehiculo = new Vehiculo(pista, modoJuego);
   trafico = new Trafico(escena, pista);
   tiempoPartida = 0;
   acumulador = 0;
@@ -432,7 +436,7 @@ function nuevaPartida() {
   controles.calibrar();
   colocarTorito(0);
   colocarCamara(0, true);
-  aviso("¡Se cortó el cable del freno!", 2.5);
+  aviso(modoJuego === "carrera" ? "¡Carrera! Acelera y baja hasta la meta" : "¡Se cortó el cable del freno!", 2.5);
 }
 
 // ---------- Gritos del chofer (solo globo de texto) ----------
@@ -464,7 +468,8 @@ function colocarCamara(dt, instantaneo = false) {
   const rumbo = m.th + v.psi;
   const adelante = vTmp2.set(Math.sin(rumbo), 0, -Math.cos(rumbo));
   tRuido += dt;
-  const intensidad = Math.min(1.701, (Math.min(1, v.v / 25) * 0.6 + v.sacudida) * 0.9) * factorVibracion(v.v);
+  const maximo = modoJuego === "carrera" ? 1.701 * 0.9 : 1.701;
+  const intensidad = Math.min(maximo, (Math.min(1, v.v / 25) * 0.6 + v.sacudida) * 0.9) * factorVibracion(v.v);
   if (partes.conductor) partes.conductor.visible = modoCamara === 0;
 
   const fovAnterior = camara.fov;
@@ -505,9 +510,10 @@ function colocarTorito(dt) {
   pista.aMundo(v.s, v.d, v.alturaSuelo, torito.position, m);
   const rumbo = m.th + v.psi;
   const factor = factorVibracion(v.v);
+  const pico = modoJuego === "carrera" ? 0.9 : 1;
   // Sin amortiguador: cada rueda copia las ondulaciones de la pista
-  const rf = pista.rugosidad(v.s + 1.1, v.d) * factor;
-  const ri = pista.rugosidad(v.s - 0.85, v.d - 0.53) * factor, rd = pista.rugosidad(v.s - 0.85, v.d + 0.53) * factor;
+  const rf = pista.rugosidad(v.s + 1.1, v.d, pico) * factor;
+  const ri = pista.rugosidad(v.s - 0.85, v.d - 0.53, pico) * factor, rd = pista.rugosidad(v.s - 0.85, v.d + 0.53, pico) * factor;
   const enSuelo = v.h <= 0.01;
   torito.position.y += enSuelo ? (rf + ri + rd) / 3 : 0;
   const cabeceo = -Math.atan(m.g * Math.cos(v.psi)) + (enSuelo ? (rf - (ri + rd) / 2) / 1.95 : 0);
@@ -543,12 +549,12 @@ function actualizarHud(dt) {
   tHud -= dt;
   if (tAviso > 0 && (tAviso -= dt) <= 0) $("aviso").classList.remove("visible");
   if (tGrito > 0 && (tGrito -= dt) <= 0) $("grito").classList.remove("visible");
-  $("alerta").classList.toggle("visible", vehiculo.inclinacion > 0.15 && vehiculo.estado === "ok");
+  $("alerta").classList.toggle("visible", modoJuego !== "carrera" && vehiculo.inclinacion > 0.15 && vehiculo.estado === "ok");
   if (tHud > 0) return;
   tHud = 0.1;
   const v = vehiculo;
   textoHud("hud-vel", Math.round(v.kmh));
-  textoHud("hud-dist", `Faltan ${Math.max(0, Math.round(pista.largo - 60 - v.s))} m`);
+  textoHud("hud-dist", `Faltan ${Math.max(0, Math.round(pista.largo - 60 - v.s))} m${modoJuego === "carrera" ? ` · ${tiempoPartida.toFixed(1)} s` : ""}`);
   $("b-centrar").classList.toggle("oculto", !controles.usandoSensor);
   const barra = (id, pct, invertido) => {
     const b = $(id);
@@ -647,7 +653,7 @@ function perderVida(motivo) {
 function revivir() {
   if (estado !== "jugando") return;
   const v = vehiculo;
-  Object.assign(v, { estado: "ok", motivo: "", psi: 0, d: ANCHO / 4, v: 4, h: 0, vy: 0, inclinacion: 0, balanceo: 0, giro: 0 });
+  Object.assign(v, { estado: "ok", motivo: "", psi: 0, d: ANCHO / 4, v: modoJuego === "carrera" ? 0 : 4, h: 0, vy: 0, inclinacion: 0, balanceo: 0, giro: 0 });
   v.dano = Math.min(v.dano, 60);
   v.suelo = pista.alturaLateral(v.d, v.s);
   v.acelLat = v.sacudida = v.ladoVuelco = 0;
@@ -719,9 +725,9 @@ function terminar(gano, motivo) {
   sonido.claxon(false);
   const metros = Math.round(Math.min(vehiculo.s, pista.largo - 60));
   let record = 0;
-  try { record = +(localStorage.getItem("recordMetros") || 0); } catch (_) { /* sin almacenamiento */ }
+  try { record = +(localStorage.getItem(modoJuego === "carrera" ? "recordMetrosCarrera" : "recordMetros") || 0); } catch (_) { /* sin almacenamiento */ }
   const nuevo = metros > record;
-  if (nuevo) try { localStorage.setItem("recordMetros", metros); } catch (_) { /* sin almacenamiento */ }
+  if (nuevo) try { localStorage.setItem(modoJuego === "carrera" ? "recordMetrosCarrera" : "recordMetros", metros); } catch (_) { /* sin almacenamiento */ }
   tRevivir = 0;
   tFin = gano ? 0.6 : 1.8;
   mostrarFin = () => {
@@ -778,6 +784,18 @@ $("btn-invertir").addEventListener("click", () => {
   $("btn-invertir").textContent = `Invertir giro: ${controles.alternarInvertir() ? "SÍ" : "NO"}`;
 });
 $("btn-invertir").textContent = `Invertir giro: ${controles.invertir ? "SÍ" : "NO"}`;
+function mostrarModo() {
+  const carrera = modoJuego === "carrera";
+  $("btn-modo").textContent = `Modo: ${carrera ? "Carrera" : "Sin frenos"}`;
+  $("b-acelerador").classList.toggle("oculto", !carrera);
+  $("ayuda-controles").innerHTML = `<b>Celular:</b> toca la mitad izquierda o derecha para girar, o inclina el teléfono. Pedales abajo.<br><b>PC:</b> ← → / A D dirección · ${carrera ? "W / ↑ acelerar · S / ↓ / Espacio frenar" : "S / ↓ / Espacio freno gastado"} · H claxon · C cámara`;
+}
+$("btn-modo").addEventListener("click", () => {
+  modoJuego = modoJuego === "carrera" ? "sinFrenos" : "carrera";
+  try { localStorage.setItem("modoJuego", modoJuego); } catch (_) {}
+  mostrarModo();
+});
+mostrarModo();
 $("btn-camara-ini").addEventListener("click", alternarCamara);
 $("btn-vibracion").addEventListener("click", alternarVibracion);
 $("btn-vibracion-p").addEventListener("click", alternarVibracion);
@@ -836,8 +854,30 @@ controles.alClaxon = (on) => {
 };
 controles.alPausa = pausar;
 
-controles.botonMantener($("b-izq"), () => (controles.botones.izq = true), () => (controles.botones.izq = false));
-controles.botonMantener($("b-der"), () => (controles.botones.der = true), () => (controles.botones.der = false));
+// Un conjunto por lado permite varios dedos sin soltar otra pulsación activa.
+const punterosGiro = { izq: new Set(), der: new Set() };
+for (const lado of ["izq", "der"]) {
+  const activos = punterosGiro[lado];
+  const actualizar = () => {
+    controles.botones[lado] = activos.size > 0;
+    $("b-" + lado).classList.toggle("activo", activos.size > 0);
+  };
+  controles.soltadores.push(() => { activos.clear(); actualizar(); });
+  for (const id of ["zona-" + lado, "b-" + lado]) {
+    const el = $(id);
+    el.addEventListener("pointerdown", (e) => {
+      if (estado !== "jugando") return;
+      e.preventDefault();
+      activos.add(e.pointerId);
+      el.setPointerCapture(e.pointerId);
+      actualizar();
+    });
+    for (const evento of ["pointerup", "pointercancel", "lostpointercapture"]) {
+      el.addEventListener(evento, (e) => { activos.delete(e.pointerId); actualizar(); });
+    }
+  }
+}
+controles.botonMantener($("b-acelerador"), () => (controles.botones.acelerador = true), () => (controles.botones.acelerador = false));
 controles.botonMantener($("b-freno"), () => (controles.botones.freno = true), () => (controles.botones.freno = false));
 controles.botonMantener($("b-claxon"), () => controles.alClaxon(true), () => controles.alClaxon(false));
 controles.botonMantener($("b-centrar"), () => { controles.calibrar(); aviso("Timón centrado", 1); });
