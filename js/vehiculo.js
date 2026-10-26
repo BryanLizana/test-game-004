@@ -11,6 +11,8 @@ export const ANCHO_TORITO = 1.3;
 const ACEL_VUELCO = 5.4;          // m/s² laterales a los que se levanta una rueda
 const ACEL_MAX_GIRO = 7.5;        // giro máximo del manubrio expresado en aceleración lateral
 const RADIO_GIRO_CARRERA = 6.5;   // manejo arcade: conserva dirección en curvas rápidas
+const ASISTE_CURVA = 0.8;         // Carrera: parte de la curva que la moto sigue sola (agarre)
+const AGARRE_CARRERA = 3.5;       // Carrera: rapidez con que el rumbo vuelve a alinearse con la calle
 const PSI_MAX = 0.9;              // en una calle angosta no se puede dar media vuelta
 const FRENO = 1.5;                 // m/s² mientras dura (suave: solo ayuda)
 const VEL_MIN_FRENO = 4.5;         // por debajo de esto el freno ya no agarra (no se detiene)
@@ -62,17 +64,18 @@ export class Vehiculo {
     const giroMax = carrera ? Math.atan(DIST_EJES / RADIO_GIRO_CARRERA)
       : Math.min(0.5, Math.atan(ACEL_MAX_GIRO * DIST_EJES / Math.max(this.v * this.v, 1)));
     const objetivo = entrada.giro * giroMax;
-    this.giro += Math.max(-dt * 2.2, Math.min(dt * 2.2, objetivo - this.giro));
+    const rapidezGiro = carrera ? 4 : 2.2;
+    this.giro += Math.max(-dt * rapidezGiro, Math.min(dt * rapidezGiro, objetivo - this.giro));
 
     // --- Longitudinal ---
     const pendiente = Math.atan(m.g);
     let a = G * Math.sin(pendiente) * Math.cos(this.psi) - 0.018 * G - 0.0016 * this.v * this.v;
     a -= ROCE_MOTOR * this.v;
     if (this.modo === "carrera") {
-      // El freno domina al acelerador y puede sostener el torito en la pendiente.
+      // Acelera solo; el freno corta el motor y puede sostener el torito en la pendiente.
       if (this.h <= 0) {
         if (entrada.freno) a -= 8;
-        else if (entrada.acelerador) a += 5.8 * Math.max(0, 1 - this.v / 32);
+        else a += 5.8 * Math.max(0, 1 - this.v / 32);
       }
       this.freno = 100;
     } else if (entrada.freno && this.freno > 0 && this.h <= 0 && this.v > VEL_MIN_FRENO) {
@@ -89,6 +92,7 @@ export class Vehiculo {
     this.v = Math.max(0, this.v + a * dt);
 
     // --- Lateral: modelo bicicleta + límite de vuelco ---
+    const ds = (this.v * Math.cos(this.psi)) / Math.max(0.2, 1 - this.d * m.k);
     let guiñada = this.h > 0 ? 0 : (this.v * Math.tan(this.giro)) / DIST_EJES;
     this.acelLat = this.v * guiñada;
     const agarre = (p.enTierra(this.s) ? 0.62 : 0.85) * G;   // en la tierra patina más
@@ -96,6 +100,12 @@ export class Vehiculo {
     if (this.derrapando && !carrera) {
       guiñada = Math.sign(guiñada) * agarre / Math.max(this.v, 0.1);
       this.acelLat = Math.sign(this.acelLat) * agarre;
+    }
+    if (carrera && this.h <= 0) {
+      // Agarre arcade: la moto acompaña parte de la curva y, sin timón, se alinea con la calle.
+      guiñada += ASISTE_CURVA * m.k * ds;
+      guiñada -= this.psi * AGARRE_CARRERA * (1 - Math.min(1, Math.abs(entrada.giro)));
+      this.acelLat = this.v * guiñada;
     }
     const exceso = Math.abs(this.acelLat) - ACEL_VUELCO;
     if (carrera) {
@@ -111,7 +121,6 @@ export class Vehiculo {
     }
     if (!carrera && this.inclinacion >= 1) return this.chocar("¡Te volcaste en la curva!", eventos);
 
-    const ds = (this.v * Math.cos(this.psi)) / Math.max(0.2, 1 - this.d * m.k);
     this.s += ds * dt;
     this.d += this.v * Math.sin(this.psi) * dt;
     this.psi += (guiñada - m.k * ds) * dt;

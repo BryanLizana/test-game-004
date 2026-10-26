@@ -229,7 +229,6 @@ html, body {
 .btn-ctrl.freno { width: 116px; height: 54px; font-size: 13px; border-radius: 14px; background: rgba(200, 16, 46, 0.6); }
 .btn-ctrl.activo { background: rgba(255, 210, 0, 0.55); }
 .btn-ctrl.flecha { width: 84px; height: 84px; font-size: 34px; }
-#b-centrar { width: auto; padding: 0 12px; font-size: 15px; }
 
 /* En PC no hacen falta los botones táctiles */
 @media (pointer: fine) { .ctrl { display: none; } }
@@ -240,29 +239,26 @@ html, body {
   .barras { grid-template-columns: auto 64px; }
 }
 
-/* Zonas amplias detrás de los controles: dirección a media altura. */
-.zona-giro { position: absolute; top: 0; bottom: 0; width: 50%; pointer-events: auto; touch-action: none; z-index: 0; }
+/* Zonas amplias detrás de los controles: dirección en los 3/4 de arriba, freno en el cuarto de abajo. */
+.zona-giro { position: absolute; top: 0; bottom: 25%; width: 50%; pointer-events: auto; touch-action: none; z-index: 0; }
+.zona-freno { position: absolute; left: 0; right: 0; bottom: 0; height: 25%; pointer-events: auto; touch-action: none; z-index: 0; }
 .zona-izq { left: 0; }
 .zona-der { right: 0; }
 .hud-sup, .tablero, #mensajes, #vidas, .ctrl { z-index: 2; }
 #hud > .flecha { position: absolute; top: 50%; transform: translateY(-50%); width: clamp(88px, 18vh, 120px); height: clamp(88px, 18vh, 120px); font-size: 44px; z-index: 1; }
 .direccion-izq { left: max(14px, env(safe-area-inset-left)); }
 .direccion-der { right: max(14px, env(safe-area-inset-right)); }
-.btn-ctrl.acelerador { width: 116px; height: 64px; font-size: 14px; border-radius: 14px; background: rgba(24, 130, 66, .75); }
-.btn-ctrl.acelerador.activo { background: #249a4e; }
-@media (pointer: fine) { .zona-giro, #hud > .flecha { display: none; } }
+@media (pointer: fine) { .zona-giro, .zona-freno, #hud > .flecha { display: none; } }
 @media (max-height: 430px) { .opciones { gap: 4px; } .btn-chico { padding: 5px 9px; font-size: 13px; } .acciones { gap: 6px; } }
 
 /* Las zonas de giro nunca se pintan: solo la flechita muestra que se está girando */
-.zona-giro { background: transparent; outline: none; -webkit-tap-highlight-color: transparent; }
+.zona-giro, .zona-freno { background: transparent; outline: none; -webkit-tap-highlight-color: transparent; }
 
 /* Celular en vertical (tipo TikTok): botones chicos según el ancho, fila de pedales abajo,
    corazones y mensajes encima. Las zonas de giro (media pantalla) siguen igual. */
 @media (orientation: portrait) and (pointer: coarse) {
   .ctrl { gap: 8px; bottom: max(10px, env(safe-area-inset-bottom)); }
   .btn-ctrl.freno { width: clamp(64px, 19vw, 84px); height: 46px; font-size: 12px; border-radius: 12px; }
-  .btn-ctrl.acelerador { width: clamp(72px, 22vw, 96px); height: 48px; font-size: 12px; border-radius: 12px; }
-  #b-centrar { height: 44px; font-size: 11px; padding: 0 8px; border-radius: 12px; }
   #hud > .flecha {
     top: 60%;
     width: clamp(46px, 13vw, 56px);

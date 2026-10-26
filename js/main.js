@@ -292,7 +292,7 @@ try {
 } catch (_) { /* sin almacenamiento */ }
 
 function factorVibracion(v) {
-  if (nivelVibracion === 1) return 0.15 + 0.35 * Math.min(1, Math.max(0, v) / 25);
+  if (nivelVibracion === 1) return 0.2 + 0.4 * Math.min(1, Math.max(0, v) / 25);
   if (nivelVibracion === 2) return 0.12;
   return nivelVibracion === 3 ? 0 : 1;
 }
@@ -483,10 +483,10 @@ function nuevaPartida() {
   $("vidas").classList.remove("invulnerable");
   dibujarVidas();
   torito.rotation.set(0, 0, 0);
-  controles.calibrar();
+  controles.centrarDireccion();
   colocarTorito(0);
   colocarCamara(0, true);
-  aviso(modoJuego === "carrera" ? "¡Carrera contra 3 rivales! Acelera hasta la meta" : "¡Se cortó el cable del freno!", 2.5);
+  aviso(modoJuego === "carrera" ? "¡Carrera contra 3 rivales! El torito acelera solo: frena en las curvas" : "¡Se cortó el cable del freno!", 2.5);
 }
 
 // ---------- Gritos del chofer (solo globo de texto) ----------
@@ -764,12 +764,13 @@ function revivir() {
 function procesarChoque({ agente, vRel }) {
   if (tInvulnerable > 0) return;
   if (agente.rival) {
-    vehiculo.v *= 0.88;
-    agente.v *= 0.9;
-    vehiculo.dano += Math.min(6, 1 + vRel * 0.3);
-    vehiculo.sacudida = Math.max(vehiculo.sacudida, 0.5);
-    sonido.golpe(0.3);
-    aviso(`¡Roce con ${agente.nombre}!`, 1);
+    // El empuje y el reparto de velocidad ya los resolvió el tráfico; aquí solo daño y efectos
+    const fuerza = Math.min(1, 0.25 + vRel / 10);
+    vehiculo.dano += Math.min(8, 1 + vRel * 0.5);
+    vehiculo.sacudida = Math.max(vehiculo.sacudida, 0.4 + fuerza * 0.5);
+    sonido.golpe(fuerza);
+    aviso(vRel > 4 ? `¡Chocaste con ${agente.nombre}!` : `¡Roce con ${agente.nombre}!`, 1);
+    vibrar(Math.round(30 + fuerza * 50));
     return;
   }
   if (agente.peaton) {
@@ -878,23 +879,16 @@ $("btn-jugar").addEventListener("click", async () => {
   $("btn-jugar").disabled = true;
   try {
     sonido.iniciar();
-    const sensores = controles.activarSensores();   // permiso dentro del gesto (iOS)
-    pantallaCompleta();                            // fullscreen también necesita el gesto
-    await sensores;
+    pantallaCompleta();                            // fullscreen necesita el gesto
     empezar();
     if (document.hidden) pausar();
   } finally { $("btn-jugar").disabled = false; }
 });
 $("btn-otra").addEventListener("click", empezar);
-$("btn-invertir").addEventListener("click", () => {
-  $("btn-invertir").textContent = `Invertir giro: ${controles.alternarInvertir() ? "SÍ" : "NO"}`;
-});
-$("btn-invertir").textContent = `Invertir giro: ${controles.invertir ? "SÍ" : "NO"}`;
 function mostrarModo() {
   const carrera = modoJuego === "carrera";
   $("btn-modo").textContent = `Modo: ${carrera ? "Carrera" : "Sin frenos"}`;
-  $("b-acelerador").classList.toggle("oculto", !carrera);
-  $("ayuda-controles").innerHTML = `${carrera ? "<b>Carrera:</b> compite contra 3 rivales, sin desmontes ni peatones.<br>" : ""}<b>Celular:</b> toca cada mitad para girar, o inclina el teléfono. Pedales abajo.<br><b>PC:</b> ← → / A D dirección · ${carrera ? "W / ↑ acelerar · S / ↓ / Espacio frenar" : "S / ↓ / Espacio freno gastado"} · H claxon · C cámara`;
+  $("ayuda-controles").innerHTML = `${carrera ? "<b>Carrera:</b> compite contra 3 rivales; el torito acelera solo y puedes chocarlos.<br>" : ""}<b>Celular:</b> toca cada mitad para girar, o inclina el teléfono. Pedales abajo.<br><b>PC:</b> ← → / A D dirección · ${carrera ? "S / ↓ / Espacio frenar" : "S / ↓ / Espacio freno gastado"} · H claxon · C cámara`;
 }
 $("btn-modo").addEventListener("click", () => {
   modoJuego = modoJuego === "carrera" ? "sinFrenos" : "carrera";
@@ -928,12 +922,6 @@ function pausar() {
 $("btn-pausa").addEventListener("click", pausar);
 $("btn-cam").addEventListener("click", alternarCamara);
 $("btn-seguir").addEventListener("click", pausar);
-function centrarTimon() {
-  controles.calibrar();
-  if (vehiculo) vehiculo.giro = 0;
-  aviso("Timón centrado", 1);
-}
-$("btn-calibrar-p").addEventListener("click", () => { centrarTimon(); pausar(); });
 $("btn-salir").addEventListener("click", () => {
   estado = "inicio";
   tRevivir = tFin = 0; mostrarFin = null;
@@ -993,18 +981,20 @@ for (const lado of ["izq", "der"]) {
     }
   }
 }
-controles.botonMantener($("b-acelerador"), () => (controles.botones.acelerador = true), () => (controles.botones.acelerador = false));
-// Los dos frenos comparten estado sin que soltar uno cancele el otro.
+// Los dos frenos y la franja de abajo comparten estado sin que soltar uno cancele los otros.
+// Los botones FRENO solo muestran que se está frenando; la zona grande es la franja.
 const frenosPresionados = new Set();
-controles.soltadores.push(() => { frenosPresionados.clear(); controles.botones.freno = false; });
-for (const id of ["b-freno", "b-freno-izq"]) {
+const pintarFrenos = () => {
+  for (const id of ["b-freno", "b-freno-izq"]) $(id).classList.toggle("activo", frenosPresionados.size > 0);
+};
+controles.soltadores.push(() => { frenosPresionados.clear(); controles.botones.freno = false; pintarFrenos(); });
+for (const id of ["b-freno", "b-freno-izq", "zona-freno"]) {
   controles.botonMantener($(id), () => {
-    frenosPresionados.add(id); controles.botones.freno = true;
+    frenosPresionados.add(id); controles.botones.freno = true; pintarFrenos();
   }, () => {
-    frenosPresionados.delete(id); controles.botones.freno = frenosPresionados.size > 0;
+    frenosPresionados.delete(id); controles.botones.freno = frenosPresionados.size > 0; pintarFrenos();
   });
 }
-$("b-centrar").addEventListener("click", centrarTimon);
 
 // Escena de fondo detrás del menú mientras se juega la primera vez
 nuevaPartida();

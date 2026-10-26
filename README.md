@@ -42,11 +42,11 @@ Abrir `http://localhost:8080`. En celular, usar la IP actual de la PC y el mismo
 
 ## Descripción
 
-Simulador 3D (Three.js) para móvil y PC: manejas un mototaxi (torito rojo) bajando un cerro de Lima. Empiezas en la trocha de tierra del cerro alto (chozas, pircas, Lima al fondo) y bajas a las calles con veredas variadas, miradores, baches, rompemuelles, obras, desmonte, tráfico, peatones, perros y gatos. En el modo original solo tienes un freno gastado que nunca detiene la moto; en Carrera controlas acelerador y freno completo. Si tomas una curva muy rápido el torito se levanta en dos ruedas y se vuelca. Tienes 3 vidas (corazones). Hay modo día y noche.
+Simulador 3D (Three.js) para móvil y PC: manejas un mototaxi (torito rojo) bajando un cerro de Lima. Empiezas en la trocha de tierra del cerro alto (chozas, pircas, Lima al fondo) y bajas a las calles con veredas variadas, miradores, baches, rompemuelles, obras, desmonte, tráfico, peatones, perros y gatos. En el modo original solo tienes un freno gastado que nunca detiene la moto; en Carrera el torito acelera solo y controlas el freno completo. Si tomas una curva muy rápido el torito se levanta en dos ruedas y se vuelca. Tienes 3 vidas (corazones). Hay modo día y noche.
 
 ## Modos
 
-En el inicio puedes elegir **Sin frenos** (bajada original con freno gastado) o **Carrera**: compite contra tres toritos rivales, sin peatones, animales, desmontes ni obras. Arranca detenido, acelera y usa el freno completo para controlar la bajada hasta la meta. Carrera supera los 40 km/h, conserva dirección a alta velocidad y permite tomar curvas sin volcar: la inclinación es visual y limitada. Los baches y saltos siguen presentes. Los rivales siguen la pista y adelantan con lógica local sencilla; no usan servicios externos. El HUD muestra posición y tiempo, y la llegada indica el puesto final. El modo elegido se guarda en el dispositivo.
+En el inicio puedes elegir **Sin frenos** (bajada original con freno gastado) o **Carrera**: compite contra tres toritos rivales, sin peatones, animales, desmontes ni obras. Arranca detenido y acelera solo; usa el freno completo para controlar la bajada hasta la meta. Carrera supera los 40 km/h y tiene agarre arcade: la moto acompaña parte de la curva y, sin timón, se alinea con la calle (`ASISTE_CURVA` y `AGARRE_CARRERA` en `vehiculo.js`). La inclinación es visual y limitada. Puedes chocar a los rivales: se empujan de costado o por detrás y se reparten la velocidad. Los baches y saltos siguen presentes. Los rivales siguen la pista y adelantan con lógica local sencilla; no usan servicios externos. El HUD muestra posición y tiempo, y la llegada indica el puesto final. El modo elegido se guarda en el dispositivo.
 
 Las veredas recuperan las escaleras características de los cerros de Lima, con peldaños, descansos y tramos de distintas longitudes. Se alternan con concreto inclinado, entradas rebajadas y tierra sin terminar. Cada lado de la calle tiene una distribución diferente.
 
@@ -59,18 +59,17 @@ Algunos muros llevan grafitis con textura, alternados con paredes de pintura gas
 ## Controles
 | | Celular (horizontal) | PC |
 |---|---|---|
-| Dirección | tocar cualquier zona libre de la mitad izquierda/derecha, o girar el teléfono | ← → / A D |
-| Acelerador (Carrera) | ACELERAR | W / ↑ |
-| Freno (completo en Carrera; gastado en Sin frenos) | FRENO | S / ↓ / Espacio |
+| Dirección | tocar los 3/4 de arriba de la mitad izquierda/derecha | ← → / A D |
+| Freno (completo en Carrera; gastado en Sin frenos) | tocar cualquier punto del cuarto de abajo de la pantalla (los botones FRENO lo indican) | S / ↓ / Espacio |
 | Claxon | — | H |
 | Cámara 1ª / 3ª persona | 🎥 | C |
 | Pausa | ❚❚ | P / Esc |
 
-En iPhone se pide permiso al sensor al tocar *JUGAR*. Si el giro sale al revés, usa *Invertir giro* en el inicio. El modo noche se elige en el inicio.
+El modo noche se elige en el inicio. El giroscopio (dirigir inclinando el teléfono), el botón *centrar*, *Recentrar timón* e *Invertir giro* se quitaron por ahora: en celular solo se dirige con las zonas táctiles.
 
 En celular hay un freno en cada lado y no se muestra botón de claxon. Ambos frenos admiten pulsaciones simultáneas. Los carros, combis y buses tienen texturas de carrocería generadas, guardadas en `assets/tex/*-lima-v1.jpg`; los prompts están en `scripts/texturas-vehiculos.json`. Los buses circulan en los sectores asfaltados.
 
-El botón **centrar** permanece accesible en celular. Los choques que consumen una vida y la reaparición limpian la dirección pendiente; los sensores dejan de dirigir cuando no entregan lecturas recientes.
+Los choques que consumen una vida y la reaparición limpian la dirección pendiente.
 
 ## Estructura
 - `js/main.js`: render, cámaras, HUD y flujo de juego
@@ -89,7 +88,6 @@ El botón **centrar** permanece accesible en celular. Los choques que consumen u
 ```sh
 npx serve .
 ```
-El giroscopio solo funciona con HTTPS (GitHub Pages lo cumple) o en `localhost`.
 
 Para verificar la física de los modos, los controles multitáctiles y las geometrías de vereda sin instalar dependencias: `node scripts/verificar-juego.mjs`. Estas pruebas no reemplazan la revisión visual y de sensores en un celular real.
 

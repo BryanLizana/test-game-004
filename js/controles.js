@@ -1,25 +1,14 @@
-// Entrada: giroscopio (celular como timón), teclado y botones táctiles.
-const GRADOS_GIRO_TOTAL = 28;
-const ZONA_MUERTA = 1.5;
-
-const esIOS = /iPad|iPhone|iPod/.test(navigator.userAgent) ||
-  (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1);
-
-function leerAlmacen(k) { try { return localStorage.getItem(k); } catch (_) { return null; } }
-function guardarAlmacen(k, v) { try { localStorage.setItem(k, v); } catch (_) { /* sin almacenamiento */ } }
+// Entrada: teclado y zonas/botones táctiles.
 
 export class Controles {
   constructor() {
     this.giro = 0;
     this.freno = false;
     this.teclas = new Set();
-    this.botones = { izq: false, der: false, freno: false, acelerador: false };
-    this.sensor = { activo: false, crudo: 0, base: null, filtrado: 0, edad: Infinity };
-    this.sensorConectado = false;
+    this.botones = { izq: false, der: false, freno: false };
     this.soltadores = [];
     this.soltadoresDireccion = [];
-    this.entrada = { giro: 0, freno: false, acelerador: false };
-    this.invertir = leerAlmacen("invertirGiro") === "1";
+    this.entrada = { giro: 0, freno: false };
     this.alCamara = () => {};
     this.alClaxon = () => {};
     this.alPausa = () => {};
@@ -40,9 +29,6 @@ export class Controles {
     });
     addEventListener("blur", () => this.limpiar());
     document.addEventListener("visibilitychange", () => { if (document.hidden) this.limpiar(); });
-    const orientar = () => { this.sensor.activo = false; this.calibrar(); };
-    if (screen.orientation && screen.orientation.addEventListener) screen.orientation.addEventListener("change", orientar);
-    else addEventListener("orientationchange", orientar);
   }
 
   // Conecta un botón táctil que se mantiene presionado
@@ -77,9 +63,7 @@ export class Controles {
     this.teclas.clear();
     for (const soltar of this.soltadores) soltar();
     this.botones.izq = this.botones.der = this.botones.freno = false;
-    this.botones.acelerador = false;
     this.giro = 0; this.freno = false;
-    this.sensor.filtrado = 0;
     this.alClaxon(false);
   }
 
@@ -87,56 +71,10 @@ export class Controles {
     for (const soltar of this.soltadoresDireccion) soltar();
     for (const k of ["a", "d", "arrowleft", "arrowright"]) this.teclas.delete(k);
     this.botones.izq = this.botones.der = false;
-    this.giro = this.entrada.giro = this.sensor.filtrado = 0;
+    this.giro = this.entrada.giro = 0;
   }
-
-  async activarSensores() {
-    if (this.sensorConectado) return true;
-    if (typeof DeviceMotionEvent === "undefined") return false;
-    try {
-      if (typeof DeviceMotionEvent.requestPermission === "function") {
-        if ((await DeviceMotionEvent.requestPermission()) !== "granted") return false;
-      }
-    } catch (_) { return false; }
-    addEventListener("devicemotion", (e) => this.alMovimiento(e));
-    this.sensorConectado = true;
-    return true;
-  }
-
-  // Gravedad proyectada en el eje horizontal de la pantalla: funciona con el
-  // celular parado (como timón) o echado (inclinando un costado).
-  alMovimiento(e) {
-    const g = e.accelerationIncludingGravity;
-    if (!g || !Number.isFinite(g.x) || !Number.isFinite(g.y)) return;
-    const ang = ((screen.orientation && screen.orientation.angle) ?? window.orientation ?? 0) * Math.PI / 180;
-    const gx = g.x * Math.cos(ang) - g.y * Math.sin(ang);
-    let grados = Math.asin(Math.max(-1, Math.min(1, gx / 9.81))) * 180 / Math.PI;
-    if (!esIOS) grados = -grados;
-    this.sensor.crudo = grados;
-    this.sensor.edad = 0;
-    if (this.sensor.base === null) this.sensor.base = grados;
-    this.sensor.activo = true;
-  }
-
-  calibrar() {
-    this.sensor.base = this.sensor.activo ? this.sensor.crudo : null;
-    this.centrarDireccion();
-  }
-
-  alternarInvertir() {
-    this.invertir = !this.invertir;
-    guardarAlmacen("invertirGiro", this.invertir ? "1" : "0");
-    return this.invertir;
-  }
-
-  get usandoSensor() { return this.sensor.activo; }
 
   actualizar(dt) {
-    this.sensor.edad += dt;
-    if (this.sensor.edad > 0.6) {
-      this.sensor.activo = false;
-      this.sensor.filtrado = 0;
-    }
     const t = this.teclas;
     const izq = t.has("arrowleft") || t.has("a") || this.botones.izq;
     const der = t.has("arrowright") || t.has("d") || this.botones.der;
@@ -147,19 +85,10 @@ export class Controles {
       const objetivo = (der ? 1 : 0) - (izq ? 1 : 0);
       const vel = Math.sign(objetivo) !== Math.sign(this.giro) && this.giro !== 0 ? 5 : 2.2;
       this.giro += Math.max(-vel * dt, Math.min(vel * dt, objetivo - this.giro));
-    } else if (this.sensor.activo) {
-      let grados = this.sensor.crudo - this.sensor.base;
-      if (this.invertir) grados = -grados;
-      const signo = Math.sign(grados);
-      grados = Math.max(0, Math.abs(grados) - ZONA_MUERTA) * signo;
-      const objetivo = Math.max(-1, Math.min(1, grados / GRADOS_GIRO_TOTAL));
-      this.sensor.filtrado += (objetivo - this.sensor.filtrado) * Math.min(1, dt * 12);
-      this.giro = this.sensor.filtrado;
     } else {
       this.giro -= Math.sign(this.giro) * Math.min(Math.abs(this.giro), 3 * dt);
     }
     this.entrada.giro = this.giro; this.entrada.freno = this.freno;
-    this.entrada.acelerador = t.has("w") || t.has("arrowup") || this.botones.acelerador;
     return this.entrada;
   }
 }

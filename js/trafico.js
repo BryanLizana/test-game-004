@@ -303,12 +303,36 @@ export class Trafico {
         for (const r of a.modelo.userData.ruedasTraseras || []) r.rotation.x -= a.v * dt / 0.2;
         if (a.s >= meta) { a.termino = true; a.tiempoLlegada = this.tiempo; a.v = 0; a.modelo.visible = false; }
       }
-      // Los corredores conservan su movimiento después de un roce.
-      if (!choque && !a.termino && a.tImpacto === 0 && !veh.invulnerable && veh.estado === "ok" && veh.h < 0.8
-        && Math.abs(a.s - veh.s) < (a.largo + LARGO_TORITO) * 0.45
-        && Math.abs(a.d - veh.d) < (a.ancho + ANCHO_TORITO) * 0.45) {
-        a.tImpacto = 1;
-        choque = { agente: a, vRel: Math.abs(veh.v - a.v) };
+      // Choque físico con el jugador: se separan por el eje que menos se encaja y se reparten el golpe.
+      const encajeS = (a.largo + LARGO_TORITO) * 0.45 - Math.abs(veh.s - a.s);
+      const encajeD = (a.ancho + ANCHO_TORITO) * 0.45 - Math.abs(veh.d - a.d);
+      if (!a.termino && !veh.invulnerable && veh.estado === "ok" && veh.h < 0.8 && encajeS > 0 && encajeD > 0) {
+        let vRel;
+        if (encajeD < encajeS) {
+          // De costado: cada uno sale empujado hacia su lado y el jugador rebota un poco
+          const lado = Math.sign(veh.d - a.d) || 1;
+          veh.d += lado * encajeD * 0.6;
+          a.d = Math.max(-2.4, Math.min(2.4, a.d - lado * encajeD * 0.4));
+          vRel = Math.abs(veh.v * Math.sin(veh.psi)) + Math.abs(veh.v - a.v) * 0.3;
+          veh.psi = lado * Math.min(0.25, Math.abs(veh.psi) * 0.5 + 0.06);
+          veh.v *= 0.97; a.v *= 0.97;
+        } else {
+          // Por detrás: el de atrás frena y empuja al de adelante (choque poco elástico)
+          const lado = Math.sign(veh.s - a.s) || 1;
+          veh.s += lado * encajeS * 0.5;
+          a.s = Math.min(meta, a.s - lado * encajeS * 0.5);
+          const dv = veh.v - a.v;
+          vRel = Math.abs(dv);
+          if (dv * lado < 0) {
+            const media = (veh.v + a.v) / 2;
+            veh.v = Math.max(0, media - dv * 0.15);
+            a.v = Math.max(0, media + dv * 0.15);
+          }
+        }
+        if (!choque && a.tImpacto === 0) {
+          a.tImpacto = 0.4;
+          choque = { agente: a, vRel };
+        }
       }
       // Permanecen en la clasificación aunque salgan del alcance visible.
       if (!a.termino) a.modelo.visible = Math.abs(a.s - veh.s) < 340;

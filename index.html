@@ -30,7 +30,6 @@
       <button id="btn-jugar" class="btn" disabled>CARGANDO…</button>
       <div class="opciones">
         <button id="btn-modo" class="btn-chico">Modo: Sin frenos</button>
-        <button id="btn-invertir" class="btn-chico">Invertir giro: NO</button>
         <button id="btn-camara-ini" class="btn-chico">Cámara: 1ª persona</button>
         <button id="btn-hora" class="btn-chico">Hora: Día ☀️</button>
         <button id="btn-vibracion" class="btn-chico">Vibración: Suave</button>
@@ -60,7 +59,6 @@
     <div class="titulo"><h1>PAUSA</h1></div>
     <div class="acciones">
       <button id="btn-seguir" class="btn">SEGUIR</button>
-      <button id="btn-calibrar-p" class="btn-chico">Recentrar timón</button>
       <button id="btn-vibracion-p" class="btn-chico">Vibración: Suave</button>
       <button id="btn-salir" class="btn-chico">Salir al inicio</button>
       <span class="version" id="version-pausa"></span>
@@ -94,15 +92,14 @@
     <!-- Cada mitad captura dirección; los pedales y menús tienen prioridad. -->
     <div id="zona-izq" class="zona-giro zona-izq" aria-hidden="true"></div>
     <div id="zona-der" class="zona-giro zona-der" aria-hidden="true"></div>
+    <div id="zona-freno" class="zona-freno" aria-hidden="true"></div>
     <button id="b-izq" class="btn-ctrl flecha direccion-izq" aria-label="Izquierda">&#9664;</button>
     <button id="b-der" class="btn-ctrl flecha direccion-der" aria-label="Derecha">&#9654;</button>
     <div class="ctrl ctrl-izq">
-      <button id="b-centrar" class="btn-ctrl chico">&#10226; centrar</button>
       <button id="b-freno-izq" class="btn-ctrl freno" aria-label="Freno izquierdo">FRENO</button>
     </div>
     <div class="ctrl ctrl-der">
       <button id="b-freno" class="btn-ctrl freno">FRENO</button>
-      <button id="b-acelerador" class="btn-ctrl acelerador oculto">ACELERAR</button>
     </div>
   </div>
 

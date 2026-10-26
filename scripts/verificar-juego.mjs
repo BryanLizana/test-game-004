@@ -14,7 +14,7 @@ const pistaLisa = (g = 0) => ({
   muestra: (_s, out) => Object.assign(out, { g, k: 0 }),
   enTierra: () => false, alturaLateral: () => 0, limiteLateral: () => 5.1,
 });
-const entrada = (acelerador = false, freno = false) => ({ giro: 0, acelerador, freno });
+const entrada = (freno = false) => ({ giro: 0, freno });
 function avanzar(v, segundos, e) {
   for (let i = 0; i < segundos * 120; i++) v.paso(1 / 120, e, []);
   assert.equal(v.estado, "ok");
@@ -22,30 +22,28 @@ function avanzar(v, segundos, e) {
 }
 const carrera = new Vehiculo(pistaLisa(), "carrera");
 assert.equal(carrera.v, 0);
-avanzar(carrera, 3, entrada());
-assert.equal(carrera.v, 0);
+avanzar(carrera, 3, entrada(true));
+assert.equal(carrera.v, 0, "con el freno apretado no arranca");
+avanzar(carrera, 5, entrada());
+assert.ok(carrera.kmh > 40, "Carrera acelera sola y supera los 40 km/h en plano");
 avanzar(carrera, 5, entrada(true));
-assert.ok(carrera.kmh > 40, "Carrera debe superar los 40 km/h en plano");
-avanzar(carrera, 5, entrada(true, true));
-assert.equal(carrera.v, 0, "el freno debe dominar al acelerador");
+assert.equal(carrera.v, 0, "el freno corta la aceleración automática");
 assert.equal(carrera.freno, 100);
 for (const pendiente of [0.1, 0.2, 0.3]) {
   const v = new Vehiculo(pistaLisa(pendiente), "carrera");
   v.v = 25;
-  avanzar(v, 8, entrada(false, true));
+  avanzar(v, 8, entrada(true));
   assert.equal(v.v, 0, "debe parar en pendiente");
-  avanzar(v, 2, entrada(true, true));
+  avanzar(v, 2, entrada(true));
   assert.equal(v.v, 0, "debe permanecer frenado en pendiente");
 }
 const original = new Vehiculo(pistaLisa(0.2));
-const originalAcelerado = new Vehiculo(pistaLisa(0.2));
 avanzar(original, 8, entrada());
-avanzar(originalAcelerado, 8, entrada(true));
-assert.equal(original.v, originalAcelerado.v, "el acelerador no afecta Sin frenos");
-avanzar(original, 8, entrada(false, true));
+avanzar(original, 8, entrada(true));
 assert.ok(original.v > 0 && original.freno < 100);
 
 // Curvas cerradas de radio 9 m, a ambos lados y a velocidades de carrera.
+// El agarre de Carrera sigue el 80 % de la curva: el timón solo pone el resto.
 for (const kmh of [45, 60, 80]) for (const lado of [-1, 1]) for (const tierra of [false, true]) {
   const pista = pistaLisa();
   const k = lado / 9;
@@ -53,14 +51,23 @@ for (const kmh of [45, 60, 80]) for (const lado of [-1, 1]) for (const tierra of
   pista.enTierra = () => tierra;
   const v = new Vehiculo(pista, "carrera");
   v.v = kmh / 3.6;
-  const angulo = Math.atan(1.95 * k / (1 - v.d * k));
+  const angulo = Math.atan(1.95 * k * 0.2 / (1 - v.d * k));
   v.giro = angulo;
   const dInicial = v.d;
-  avanzar(v, 4, { giro: angulo / Math.atan(1.95 / 6.5), freno: false, acelerador: true });
+  avanzar(v, 4, { giro: angulo / Math.atan(1.95 / 6.5), freno: false });
   assert.ok(v.kmh > 40);
   assert.ok(Math.abs(v.d - dInicial) < 0.01, "debe seguir la curva sin frenar ni salirse");
   assert.ok(v.inclinacion < 1 && Math.abs(v.balanceo) <= 0.32, "inclinación visual limitada");
   assert.equal(v.h, 0, "doblar no debe lanzar la moto al aire");
+}
+// Sin tocar el timón, el agarre mantiene el torito en la calle en una curva abierta (radio 40 m).
+for (const lado of [-1, 1]) {
+  const pista = { ...pistaLisa(), muestra: (_s, out) => Object.assign(out, { g: 0, k: lado / 40 }) };
+  const v = new Vehiculo(pista, "carrera");
+  v.v = 60 / 3.6;
+  const dInicial = v.d;
+  for (let i = 0; i < 3 * 120; i++) v.paso(1 / 120, { giro: 0, freno: false }, []);
+  assert.ok(Math.abs(v.d - dInicial) < 1.6, `el agarre debe sostener la curva sin timón (desvío ${(v.d - dInicial).toFixed(2)} m)`);
 }
 const vuelcoOriginal = new Vehiculo({ ...pistaLisa(), limiteLateral: () => 10000 });
 vuelcoOriginal.v = 15;
@@ -134,23 +141,21 @@ const Controles = clase("js/controles.js", "Controles", {
   addEventListener() {}, document: { addEventListener() {} }, screen: {}, window: {},
 });
 const controles = new Controles();
-controles.teclas.add("w");
-assert.equal(controles.actualizar(0.1).acelerador, true);
-controles.limpiar();
-assert.equal(controles.actualizar(0.1).acelerador, false);
 const elementos = new Map();
 const $ = (id) => { if (!elementos.has(id)) elementos.set(id, new Elemento()); return elementos.get(id); };
 const main = leer("js/main.js");
 const bloque = main.slice(main.indexOf("const punterosGiro ="), main.indexOf("// Escena de fondo"));
 const eventosGlobales = new Map();
-vm.runInNewContext(bloque, { controles, $, estado: "jugando", centrarTimon() {},
+vm.runInNewContext(bloque, { controles, $, estado: "jugando",
   addEventListener(tipo, fn) { if (!eventosGlobales.has(tipo)) eventosGlobales.set(tipo, []); eventosGlobales.get(tipo).push(fn); },
 });
 $("zona-izq").emitir("pointerdown", 1);
 $("b-izq").emitir("pointerdown", 2);
 $("zona-der").emitir("pointerdown", 3);
-$("b-acelerador").emitir("pointerdown", 4);
-assert.equal(controles.actualizar(0.1).acelerador, true);
+$("zona-freno").emitir("pointerdown", 4);
+assert.equal(controles.actualizar(0.1).freno, true, "la franja de abajo frena");
+$("zona-freno").emitir("pointerup", 4);
+assert.equal(controles.actualizar(0.1).freno, false);
 $("zona-izq").emitir("pointerup", 1);
 assert.equal(controles.botones.izq, true, "el segundo dedo sigue girando");
 $("b-izq").emitir("pointercancel", 2);
@@ -166,7 +171,6 @@ assert.equal(controles.actualizar(0.1).freno, false);
 $("b-freno-izq").emitir("pointerdown", 7);
 controles.limpiar();
 assert.equal(controles.actualizar(0.1).freno, false);
-assert.equal(controles.actualizar(0.1).acelerador, false);
 assert.equal(controles.actualizar(0.1).giro, 0);
 $("zona-izq").emitir("pointerdown", 9);
 controles.actualizar(0.2);
@@ -174,18 +178,11 @@ assert.ok(controles.giro < 0);
 for (const fn of eventosGlobales.get("pointerup")) fn({ pointerId: 9 });
 assert.equal(controles.botones.izq, false, "soltar fuera de la zona no deja el giro pegado");
 $("zona-izq").emitir("pointerdown", 10);
-controles.botones.acelerador = true;
+controles.botones.freno = true;
 controles.centrarDireccion();
 assert.equal(controles.actualizar(0.1).giro, 0, "centrar elimina pulsaciones pendientes tras un choque");
-assert.equal(controles.botones.acelerador, true, "centrar no suelta el acelerador");
+assert.equal(controles.botones.freno, true, "centrar no suelta el freno");
 controles.limpiar();
-controles.alMovimiento({ accelerationIncludingGravity: { x: 0, y: 0 } });
-controles.alMovimiento({ accelerationIncludingGravity: { x: 3, y: 0 } });
-assert.ok(controles.actualizar(0.1).giro < 0);
-assert.equal(controles.actualizar(0.7).giro, 0, "un sensor sin nuevas lecturas no mantiene el giro");
-controles.alMovimiento({ accelerationIncludingGravity: { x: 3, y: 0 } });
-controles.calibrar();
-assert.equal(controles.actualizar(0.1).giro, 0);
 
 const modeloSimple = () => ({
   userData: {}, position: { set() {} }, rotation: { x: 0, y: 0, z: 0, set() {} }, visible: true,
