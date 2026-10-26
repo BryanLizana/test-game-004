@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=1.2.0";
-import { LARGO_TORITO, ANCHO_TORITO } from "./vehiculo.js?v=1.2.0";
-import * as modelos from "./modelos.js?v=1.2.0";
-import { reserva } from "./reciclaje.js?v=1.2.0";
+import { ANCHO, VEREDA } from "./pista.js?v=1.2.1";
+import { LARGO_TORITO, ANCHO_TORITO } from "./vehiculo.js?v=1.2.1";
+import * as modelos from "./modelos.js?v=1.2.1";
+import { reserva } from "./reciclaje.js?v=1.2.1";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -17,10 +17,10 @@ const elegir = (lista) => lista[(Math.random() * lista.length) | 0];
 
 // Mototaxis de la zona: azul, verde o amarillo, solos o combinados con blanco [carrocería, techo]
 const BLANCO = 0xf2f2ee;
+// Como los toritos de Lima: cabina blanca y carenado, faldón y guardabarro de color.
+// Solo azul, verde, amarillo y rojo (el rojo entero es el del jugador).
 const COLORES_TORITO = [
-  [0x1f4fbf, 0x1f4fbf], [0x2f6fd6, BLANCO], [BLANCO, 0x1f4fbf], [0x16388f, BLANCO],
-  [0x1f8a3c, 0x1f8a3c], [0x34a853, BLANCO], [BLANCO, 0x1f8a3c], [0x146b2e, BLANCO],
-  [0xf2c200, 0xf2c200], [0xffd84d, BLANCO], [BLANCO, 0xe0b000], [0xe0a800, BLANCO],
+  [0x1f5fc4, BLANCO], [0x1f8a3c, BLANCO], [0xf2c200, BLANCO], [0xc8102e, BLANCO],
 ];
 const MEDIDAS = {
   carro: { largo: 4.2, ancho: 1.7 },
@@ -115,7 +115,7 @@ export class Trafico {
     if (this.modo === "carrera") {
       for (let i = 0; i < 3; i++) {
         this.agregar("torito", i === 0 ? 8 : 14, i === 1 ? 1.65 : -1.65, 0, {
-          rival: true, nombre: `Rival ${i + 1}`, carril: i === 1 ? 1.65 : -1.65,
+          rival: true, nombre: `Rival ${i + 1}`, carril: i === 1 ? 1.65 : -1.65, colorTorito: i,
           ritmo: 18.5 + i * 0.9, termino: false, tiempoLlegada: null, tImpacto: 0,
         });
       }

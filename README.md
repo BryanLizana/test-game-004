@@ -2,7 +2,12 @@
 
 ## Estado para retomar — 26/10/2026
 
-**Versión actual: v1.2.0**, publicada en GitHub (`main`). Falta probarla en un celular real.
+**Versión actual: v1.2.1**, publicada en GitHub (`main`). Falta probarla en un celular real.
+
+### Novedades de v1.2.1
+
+- Toritos del tráfico y rivales solo en azul, verde, amarillo y rojo, con cabina blanca (costados, pared trasera y techo) y carenado, faldón, guardabarro y barandas del techo de color. Los rivales de Carrera salen azul, verde y amarillo.
+- Corregido: el caché del modelo bajo no distinguía el color del techo.
 
 ### Novedades de v1.2.0
 
@@ -19,7 +24,7 @@
 - **Reciclaje** (`reciclaje.js`): reserva compartida por clave (`torito|i`, `persona|tipo`, `choza|v`…) para el tráfico, las chozas y los contenedores de mallas.
 - **Shaders precompilados al cargar.** La calidad automática ya no apaga las sombras (eso recompilaba todo y congelaba unos 7 s): solo achica el mapa de sombra y lo actualiza cuadro por medio.
 - **Celular en vertical u horizontal**, sin bloqueo de orientación. En vertical: botones chicos, resaltado solo en la flecha, primera persona con el mundo grande y el manubrio a escala (valores en el objeto `VERTICAL` de `main.js`), y tercera persona más alejada.
-- Veredas de tierra izquierdas sin huecos (material de tierra a doble cara). Barra de freno con borde amarillo mientras se gasta. Toritos del tráfico azules, verdes o amarillos, solos o con blanco.
+- Veredas de tierra izquierdas sin huecos (material de tierra a doble cara). Barra de freno con borde amarillo mientras se gasta. Toritos del tráfico de colores (ver v1.2.1).
 
 Verificado: `node scripts/verificar-juego.mjs`, la sintaxis de todos los JS y una sonda de rayos en Firefox (0 huecos en veredas). En Firefox también se comprobó la carga por tramos sin errores, 50 FPS tras saltar 300 m, la ausencia del congelamiento de 7 s y los modos vertical y horizontal simulados.
 

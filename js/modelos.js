@@ -755,8 +755,15 @@ function crearToritoBajo(color, conConductor, colorTecho = color) {
   const gPanel = geo("t_panel", () => perfilLateral(perfilConArcos(0.42, 1.31, 0.3,
     [{ z: 0.85, r: 0.29, yc: 0.24 }],
     [[1.32, 0.42], [1.32, 0.98], [0.56, 0.98], [0.42, 0.84]]), 0.05, 0.02));
+  // Dos tonos: costados, pared trasera y techo en colorTecho; faldón y barandas del techo en color
+  const dosTonos = colorTecho !== color;
+  const mTecho = mPintura(colorTecho);
   for (const s of [-1, 1]) {
-    pon(carroceria, malla(gPanel, mCuerpo), s * 0.625, 0, 0);
+    pon(carroceria, malla(gPanel, dosTonos ? mTecho : mCuerpo), s * 0.625, 0, 0);
+    if (dosTonos) {
+      pon(carroceria, malla(caja(0.014, 0.14, 1.0), mCuerpo, false), s * 0.655, 0.63, 0.81);
+      pon(carroceria, malla(caja(0.04, 0.04, 2.2), mCuerpo, false), s * 0.6, 1.73, 0.17);
+    }
     pon(carroceria, malla(caja(0.012, 0.05, 0.86), mAmarillo(), false), s * 0.652, 0.9, 0.89);
     carroceria.add(segmento(v3(s * 0.62, 0.4, -0.12), v3(s * 0.62, 1.6, -0.12), 0.025, mAmarillo(), 5));
     pon(carroceria, malla(caja(0.06, 1.15, 0.07), mCuerpo), s * 0.635, 1.05, -0.94);   // pilar A
@@ -764,8 +771,7 @@ function crearToritoBajo(color, conConductor, colorTecho = color) {
   }
   pon(carroceria, malla(caja(1.22, 0.68, 0.08), mCuerpo), 0, 0.64, 1.28);
   pon(carroceria, malla(caja(1.2, 0.05, 0.012), mAmarillo(), false), 0, 0.9, 1.322);
-  // Techo y pared trasera de la cabina pueden ir en otro color (combinaciones con blanco)
-  const mTecho = mPintura(colorTecho);
+  // Pared trasera de la cabina en el color del techo
   pon(carroceria, malla(caja(1.24, 0.62, 0.04), mTecho), 0, 1.28, 1.3);
   const mStop = new THREE.MeshStandardMaterial({ color: 0xd81020, emissive: 0xff1020, emissiveIntensity: 0.25, roughness: 0.4 });
   const luces = [-1, 1].map((s) => pon(carroceria, malla(caja(0.13, 0.11, 0.03), mStop, false), s * 0.48, 0.74, 1.325));
@@ -837,7 +843,7 @@ function crearToritoBajo(color, conConductor, colorTecho = color) {
   raiz.userData = { ruedaDelantera, direccion, ruedasTraseras, ojoConductor, carroceria, faro,
     lucesTraseras: luces, aguja, adorno, detalle: "bajo" };
   if (conductor) raiz.userData.conductor = conductor;
-  const k = `toritoB|${color}`;
+  const k = `toritoB|${color}|${colorTecho}`;
   fusionar(carroceria, { excluir: [cabezal, conductor, ojoConductor, faro, ...luces], cache: `${k}|carr` });
   fusionar(direccion, { excluir: [ruedaDelantera], cache: `${k}|dir` });
   if (conductor) fusionar(conductor, { cache: "toritoB|conductor" });
