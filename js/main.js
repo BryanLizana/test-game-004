@@ -1,12 +1,13 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js?v=1.0.1";
-import { Vehiculo } from "./vehiculo.js?v=1.0.1";
-import { Trafico } from "./trafico.js?v=1.0.1";
-import { Controles } from "./controles.js?v=1.0.1";
-import { Sonido } from "./audio.js?v=1.0.1";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.0.1";
-import { crearLetreros } from "./ambiente.js?v=1.0.1";
+import { Pista, ANCHO } from "./pista.js?v=1.1.0";
+import { GestorTramos } from "./tramos.js?v=1.1.0";
+import { Vehiculo } from "./vehiculo.js?v=1.1.0";
+import { Trafico } from "./trafico.js?v=1.1.0";
+import { Controles } from "./controles.js?v=1.1.0";
+import { Sonido } from "./audio.js?v=1.1.0";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.1.0";
+import { crearLetreros } from "./ambiente.js?v=1.1.0";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -215,6 +216,8 @@ const mat = {
   geoPrenda: new THREE.PlaneGeometry(0.45, 0.6),
   prendas: [0xe63946, 0x2a9d8f, 0xf4a261, 0x3a86ff, 0xffffff, 0x8338ec].map((c) => est(c, { side: THREE.DoubleSide })),
   geoCilindro: new THREE.CylinderGeometry(0.3, 0.3, 0.9, 12),
+  geoCruzPalo: new THREE.BoxGeometry(0.6, 9, 0.6),
+  geoCruzBrazo: new THREE.BoxGeometry(4.5, 0.6, 0.6),
   cilindro: est(0x1f5fbf, { roughness: 0.5 }),
   geoPoste: new THREE.CylinderGeometry(0.11, 0.16, 8, 6),
   cable: new THREE.LineBasicMaterial({ color: 0x1d1d1d }),
@@ -403,14 +406,43 @@ function ajustarCalidad(dt) {
   const fps = cuadros / tCalidad;
   cuadros = 0; tCalidad = 0;
   if (fps < 42 && nivelCalidad === 0) { renderer.setPixelRatio(1); nivelCalidad = 1; }
-  else if (fps < 32 && nivelCalidad === 1) { sombras = false; sol.castShadow = false; renderer.shadowMap.enabled = false; nivelCalidad = 2; }
+  else if (fps < 32 && nivelCalidad === 1) { sombrasBaratas(); nivelCalidad = 2; }
   else if (fps < 26 && nivelCalidad === 2) { renderer.setPixelRatio(0.75); nivelCalidad = 3; }
+}
+
+// Apagar las sombras obliga a recompilar todos los shaders (≈7 s congelado justo cuando el
+// celular ya va lento). En su lugar: mapa de sombra más chico y actualizado cuadro por medio.
+let sombrasCadaDos = false, cuadroSombra = 0;
+function sombrasBaratas() {
+  sol.shadow.mapSize.set(512, 512);
+  if (sol.shadow.map) { sol.shadow.map.dispose(); sol.shadow.map = null; }
+  renderer.shadowMap.autoUpdate = false;
+  renderer.shadowMap.needsUpdate = true;
+  sombrasCadaDos = true;
+}
+
+// Compila de una vez los shaders de todos los materiales de la pista (normales e instanciados).
+// Con la carga por tramos, un material nuevo (p. ej. el primer guardavía) causaba un tirón al aparecer.
+function precompilarMateriales() {
+  const geo = new THREE.PlaneGeometry(0.01, 0.01), temporales = [];
+  const materiales = new Set(Object.values(mat).flat().filter((m) => m && m.isMaterial && !m.isLineBasicMaterial));
+  for (const m of materiales) {
+    const normal = new THREE.Mesh(geo, m), instanciado = new THREE.InstancedMesh(geo, m, 1);
+    escena.add(normal, instanciado);
+    temporales.push(normal, instanciado);
+  }
+  renderer.compile(escena, camara);
+  for (const t of temporales) {
+    escena.remove(t);
+    if (t.isInstancedMesh) t.dispose();
+  }
+  geo.dispose();
 }
 
 // ---------- Estado de juego ----------
 const controles = new Controles();
 const sonido = new Sonido();
-let pista, vehiculo, trafico;
+let pista, tramos, vehiculo, trafico;
 let estado = "inicio";
 let modoJuego = "sinFrenos";
 try { if (localStorage.getItem("modoJuego") === "carrera") modoJuego = "carrera"; } catch (_) {}
@@ -422,14 +454,12 @@ const recursosPista = new Set(Object.values(mat).flat());
 
 function nuevaPartida() {
   const liberados = new Set();
-  if (pista) for (const b of [...pista.bloques, pista.final]) {
-    escena.remove(b);
-    liberarRecursos(b, recursosPista, liberados);
+  if (tramos) tramos.cerrar();
+  if (pista && pista.final) {
+    escena.remove(pista.final);
+    liberarRecursos(pista.final, recursosPista, liberados);
   }
-  if (trafico) for (const a of trafico.agentes) {
-    escena.remove(a.modelo);
-    liberarRecursos(a.modelo, recursosPista, liberados);
-  }
+  if (trafico) trafico.liberarTodo();
   tRevivir = tFin = 0; mostrarFin = null;
   eventos.length = 0;
   controles.limpiar();
@@ -437,9 +467,13 @@ function nuevaPartida() {
   cuadros = tCalidad = 0;
   $("grito").classList.remove("visible");
   if (partes.adorno) { partes.adorno.userData.ang = partes.adorno.userData.vel = 0; partes.adorno.rotation.z = 0; }
-  pista = new Pista();
-  pista.construir(escena, mat);
+  // La semilla se comparte con el worker que calcula los bloques: ambos arman la misma calle
+  const semilla = (Math.random() * 1e9) | 0;
+  pista = new Pista(semilla);
+  tramos = new GestorTramos(pista, escena, mat, semilla);
+  pista.construirFinal(escena);
   vehiculo = new Vehiculo(pista, modoJuego);
+  tramos.precargar(vehiculo.s);
   trafico = new Trafico(escena, pista, modoJuego);
   tiempoPartida = 0;
   acumulador = 0;
@@ -478,6 +512,20 @@ const eShake = new THREE.Euler();
 const muestraTorito = {}, muestraCamara = {};
 let tRuido = 0;
 
+// Celular vertical: en vez de abrir el fov hasta el "ojo de pez" (que llenaba la pantalla de
+// cabina), se usa un fov moderado como en PC, con el ojo algo más arriba/adelante y el timón
+// más chico. Así la calle se ve grande y la cabina ocupa una franja razonable.
+const VERTICAL = {
+  fov1: 78, subeOjo: 0.08, adelantaOjo: 0.1, escTimon: 0.65, bajaTimon: -0.035,   // 1ª persona
+  fov3: 72, atras3: 1.4, sube3: 0.7,                                                // 3ª persona
+};
+function pesoVertical() {
+  const a = camara.aspect;
+  if (a >= 1) return 0;
+  const t = Math.min(1, (1 - a) / 0.3);
+  return t * t * (3 - 2 * t);
+}
+
 function colocarCamara(dt, instantaneo = false) {
   const v = vehiculo;
   const m = pista.muestra(v.s, muestraCamara);
@@ -489,28 +537,42 @@ function colocarCamara(dt, instantaneo = false) {
   if (partes.conductor) partes.conductor.visible = modoCamara === 0;
 
   const fovAnterior = camara.fov;
+  // 0 en horizontal/PC (todo igual que siempre), 1 en celular vertical, mezcla suave entre medio
+  const kv = pesoVertical();
+  const dir = partes.direccion;
+  if (dir) {
+    // En vertical 1ª persona el timón se achica y baja un poco para no tapar la pista
+    const k1 = modoCamara === 1 ? kv : 0;
+    dir.scale.setScalar(1 + (VERTICAL.escTimon - 1) * k1);
+    dir.position.set(0, VERTICAL.bajaTimon * k1, 0);
+  }
   if (modoCamara === 1) {
     torito.updateWorldMatrix(true, true);
     ojo.getWorldPosition(camara.position);
     ojo.getWorldQuaternion(camara.quaternion);
+    if (kv > 0) {
+      // Ojo un poco más arriba y adelante: el techo y el tablero salen del cuadro
+      camara.position.add(vTmp.set(0, VERTICAL.subeOjo * kv, -VERTICAL.adelantaOjo * kv).applyQuaternion(torito.quaternion));
+    }
     // Vibración del asiento: más fuerte a más velocidad y en golpes
     const a = 0.006 * intensidad;
     camara.position.y += Math.sin(tRuido * 31) * a + Math.sin(tRuido * 17.3) * a;
     eShake.set(Math.sin(tRuido * 23.1) * a * 0.8, Math.sin(tRuido * 13.7) * a * 0.5, Math.sin(tRuido * 19.9) * a * 0.6);
     camara.quaternion.multiply(qTmp.setFromEuler(eShake));
-    camara.fov = fovSegunPantalla(74 + Math.min(18, v.v * 0.6));
+    const fovNormal = fovSegunPantalla(74 + Math.min(18, v.v * 0.6));
+    camara.fov = kv > 0 ? fovNormal + (VERTICAL.fov1 + Math.min(10, v.v * 0.3) - fovNormal) * kv : fovNormal;
   } else {
-    // En vertical la cámara se aleja y sube para que el torito no tape la pantalla
-    const vertical = camara.aspect < 1;
-    const destino = vTmp.copy(torito.position).addScaledVector(adelante, vertical ? -9.2 : -6.3);
-    destino.y += vertical ? 3.4 : 2.5;
+    // En vertical la cámara se aleja y sube un poco más para encuadrar el torito
+    const destino = vTmp.copy(torito.position).addScaledVector(adelante, -6.3 - VERTICAL.atras3 * kv);
+    destino.y += 2.5 + VERTICAL.sube3 * kv;
     if (instantaneo) camara.position.copy(destino);
     else camara.position.lerp(destino, 1 - Math.exp(-dt * 6));
     camara.position.y += Math.sin(tRuido * 27) * 0.02 * intensidad;
     const mira = vTmp.copy(torito.position).addScaledVector(adelante, 4);
     mira.y += 1.1;
     camara.lookAt(mira);
-    camara.fov = fovSegunPantalla(66 + Math.min(16, v.v * 0.55));
+    const fovNormal = fovSegunPantalla(66 + Math.min(16, v.v * 0.55));
+    camara.fov = kv > 0 ? fovNormal + (VERTICAL.fov3 + Math.min(12, v.v * 0.4) - fovNormal) * kv : fovNormal;
   }
   if (camara.fov !== fovAnterior) camara.updateProjectionMatrix();
 }
@@ -624,7 +686,7 @@ function bucle(ahora) {
     if (trafico.gritos.length) { gritar(trafico.gritos[trafico.gritos.length - 1]); trafico.gritos.length = 0; }
     if (choque && vehiculo.estado === "ok") procesarChoque(choque);
     procesarEventos();
-    pista.actualizarVisibles(vehiculo.s);
+    tramos.actualizar(vehiculo.s);
     sonido.actualizar({
       rpm: vehiculo.rpm, v: vehiculo.v,
       chirrido: (vehiculo.raspando ? 0.2 : 0) + (vehiculo.derrapando ? 0.15 : 0) + Math.max(0, Math.abs(vehiculo.acelLat) - 4.5) * 0.05,
@@ -642,6 +704,7 @@ function bucle(ahora) {
   cielo.position.copy(camara.position);
   actualizarLucesPoste(dt);
   if (estado === "jugando") ajustarCalidad(dt);
+  if (sombrasCadaDos && cuadroSombra++ % 2 === 0) renderer.shadowMap.needsUpdate = true;
   renderer.render(escena, camara);
 }
 
@@ -946,6 +1009,7 @@ $("b-centrar").addEventListener("click", centrarTimon);
 // Escena de fondo detrás del menú mientras se juega la primera vez
 nuevaPartida();
 aplicarHora();
+precompilarMateriales();
 mostrarVibracion();
 $("version-pausa").textContent = $("version").textContent;
 $("btn-jugar").disabled = false;
@@ -953,4 +1017,4 @@ $("btn-jugar").textContent = "JUGAR";
 requestAnimationFrame(bucle);
 
 // Acceso para depuración desde la consola
-window.__juego = { get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, escena, camara, THREE, nuevaPartida };
+window.__juego = { get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, escena, camara, renderer, THREE, nuevaPartida };

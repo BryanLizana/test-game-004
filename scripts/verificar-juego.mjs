@@ -193,7 +193,8 @@ const modeloSimple = () => ({
 const modelosSimple = Object.fromEntries(["crearCarro", "crearTorito", "crearPersona", "crearPerro", "crearGato", "crearObra", "crearDesmonte"].map((k) => [k, modeloSimple]));
 modelosSimple.animarCaminar = modelosSimple.liberarRecursos = () => {};
 const azarFijo = Object.create(Math); azarFijo.random = () => 0.6;
-const Trafico = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, modelos: modelosSimple, Math: azarFijo });
+const reservaSimple = { tomar: (_clave, crear) => crear(), devolver() {} };
+const Trafico = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, modelos: modelosSimple, reserva: reservaSimple, Math: azarFijo });
 const circuito = {
   largo: 1000, finTierra: 200, cruces: [300, 500, 700],
   muestra: (_s, out = {}) => Object.assign(out, { g: 0.15, k: 0.06, th: 0 }),

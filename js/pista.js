@@ -1,5 +1,4 @@
-import * as THREE from "three";
-import * as modelos from "./modelos.js?v=1.0.1";
+import * as THREE from "./three.js?v=1.1.0";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -7,7 +6,7 @@ export const ANCHO = 7;          // calzada
 export const VEREDA = 1.6;
 export const ALTO_VEREDA = 0.15;
 const PASO = 1;                  // metros entre muestras
-const CHUNK = 60;                // metros por bloque de malla
+export const CHUNK = 60;         // metros por bloque de malla
 const FONDO_TECHO = 7;
 const BERMA = 2;                 // franja de tierra entre la trocha y la pirca
 const LARGO_TIERRA = 450;        // primera parte: cerro alto sin pista
@@ -26,6 +25,33 @@ function marcoLocal(pista, s, d, y0, rumbo) {
   const c = pista.aMundo(s, d, 0);
   const cs = Math.cos(rumbo), sn = Math.sin(rumbo);
   return (x, y, z) => [c.x + x * cs + z * sn, y0 + y, c.z - x * sn + z * cs];
+}
+
+// Normales por vértice (promedio de las caras): así el bloque sale listo sin depender de Three.js
+function normales(pos, idx) {
+  const n = new Float32Array(pos.length);
+  for (let k = 0; k < idx.length; k += 3) {
+    const a = idx[k] * 3, b = idx[k + 1] * 3, c = idx[k + 2] * 3;
+    const ux = pos[b] - pos[a], uy = pos[b + 1] - pos[a + 1], uz = pos[b + 2] - pos[a + 2];
+    const vx = pos[c] - pos[a], vy = pos[c + 1] - pos[a + 1], vz = pos[c + 2] - pos[a + 2];
+    const nx = uy * vz - uz * vy, ny = uz * vx - ux * vz, nz = ux * vy - uy * vx;
+    for (const i of [a, b, c]) { n[i] += nx; n[i + 1] += ny; n[i + 2] += nz; }
+  }
+  for (let i = 0; i < n.length; i += 3) {
+    const l = Math.hypot(n[i], n[i + 1], n[i + 2]) || 1;
+    n[i] /= l; n[i + 1] /= l; n[i + 2] /= l;
+  }
+  return n;
+}
+
+// Matriz 4x4 (columnas, como Three.js) con posición y rotación Euler en orden YXZ
+function matrizYXZ(out, o, x, y, z, rx, ry, rz = 0) {
+  const a = Math.cos(rx), b = Math.sin(rx), c = Math.cos(ry), d = Math.sin(ry), e = Math.cos(rz), f = Math.sin(rz);
+  const ce = c * e, cf = c * f, de = d * e, df = d * f;
+  out.set([ce + df * b, a * f, cf * b - de, 0,
+           de * b - cf, a * e, df + ce * b, 0,
+           a * d, -b, a * c, 0,
+           x, y, z, 1], o);
 }
 
 function suavizar(arr, ventana) {
@@ -265,6 +291,9 @@ export class Pista {
     }
     this.postes = [];
     for (let s = 10; s < this.largo; s += 30 + r() * 10) this.postes.push({ s, lado: r() < 0.5 ? -1 : 1 });
+    // Posición de cada foco, para las luces dinámicas de noche
+    this.lamparas = this.postes.map((p) =>
+      this.aMundo(p.s, p.lado * (ANCHO / 2 - 1.3), (p.s < this.finTierra ? 0.05 : ALTO_VEREDA) + 7.3));
 
     this.rompemuelles = [];
     for (let s = 120; s < this.largo - 150; s += 160 + r() * 200) {
@@ -325,26 +354,19 @@ export class Pista {
   }
 
   // ---------- Mallas ----------
-  construir(escena, mat) {
-    this.bloques = [];
-    this.lamparas = [];   // posiciones de los focos (para las luces dinámicas de noche)
-    for (let s0 = 0; s0 < this.largo; s0 += CHUNK) {
-      const g = new THREE.Group();
-      g.userData.s0 = s0;
-      g.userData.s1 = Math.min(this.largo, s0 + CHUNK);
-      this.construirBloque(g, s0, g.userData.s1, mat);
-      escena.add(g);
-      this.bloques.push(g);
-    }
-    this.construirFinal(escena);
-    this.actualizarVisibles(8);
+  get numBloques() { return Math.ceil(this.largo / CHUNK); }
+
+  // Describe un bloque de 60 m solo con datos (arreglos de números y claves de material):
+  // no crea objetos de Three.js, así se puede calcular fuera del hilo principal.
+  // `mat` es un espejo de los materiales con claves de texto (ver tramos.js).
+  datosBloque(indice, mat) {
+    const s0 = indice * CHUNK, s1 = Math.min(this.largo, s0 + CHUNK);
+    const salida = { indice, s0, s1, mallas: [], inst: [], lineas: [], modelos: [] };
+    this.construirBloque(salida, s0, s1, mat);
+    return salida;
   }
 
-  actualizarVisibles(s) {
-    for (const b of this.bloques) b.visible = b.userData.s1 > s - 80 && b.userData.s0 < s + 340;
-  }
-
-  construirBloque(grupo, s0, s1, mat) {
+  construirBloque(salida, s0, s1, mat) {
     const i0 = Math.max(0, Math.floor(s0 / PASO)), i1 = Math.min(this.n - 1, Math.ceil(s1 / PASO));
     const v = new THREE.Vector3();
 
@@ -365,14 +387,8 @@ export class Pista {
     const nuevo = () => ({ pos: [], uv: [], idx: [] });
     const malla = (buf, material, sombra = true) => {
       if (!buf.idx.length) return;
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute(buf.pos, 3));
-      geo.setAttribute("uv", new THREE.Float32BufferAttribute(buf.uv, 2));
-      geo.setIndex(buf.idx);
-      geo.computeVertexNormals();
-      const m = new THREE.Mesh(geo, material);
-      m.receiveShadow = sombra;
-      grupo.add(m);
+      const pos = new Float32Array(buf.pos), idx = new Uint32Array(buf.idx);
+      salida.mallas.push({ mat: material, pos, uv: new Float32Array(buf.uv), idx, normal: normales(pos, idx), sombra });
     };
 
     // Calzada
@@ -388,7 +404,7 @@ export class Pista {
     };
     calzada(i0, Math.min(i1, iT), mat.tierra, 5);
     calzada(Math.max(i0, iT), i1, mat.asfalto, 4);
-    if (i0 < iT) this.construirCerro(grupo, i0, Math.min(i1, iT), mat, tira, nuevo, malla);
+    if (i0 < iT) this.construirCerro(salida, i0, Math.min(i1, iT), mat, tira, nuevo, malla);
 
     // Veredas mixtas con sardinel, rebajes y escaleras puntuales.
     const vereda = nuevo();
@@ -460,14 +476,14 @@ export class Pista {
         const viga = nuevo();
         tira(viga, a, b, (i) => [{ d: dB - 0.1, h: 0.65, u: i / 4, v: 0 }, { d: dB - 0.1, h: 1.0, u: i / 4, v: 1 }]);
         malla(viga, mat.guardavia);
-        this.postesBarrera(grupo, a, b, dB, 2, mat.geoPosteGuardavia, mat.poste, 0.55);
+        this.postesBarrera(salida, a, b, dB, 2, mat.geoPosteGuardavia, mat.poste, 0.55);
       } else if (mir.tipo === "valla") {
         const tablas = nuevo();
         for (const [h0, h1] of [[0.45, 0.62], [0.78, 0.95], [1.1, 1.27]]) {
           tira(tablas, a, b, (i) => [{ d: dB - 0.12, h: h0, u: i / 3, v: 0 }, { d: dB - 0.12, h: h1, u: i / 3, v: 0.35 }]);
         }
         malla(tablas, mat.madera);
-        this.postesBarrera(grupo, a, b, dB - 0.05, 2.5, mat.geoPosteValla, mat.madera, 0.75);
+        this.postesBarrera(salida, a, b, dB - 0.05, 2.5, mat.geoPosteValla, mat.madera, 0.75);
       }
       const cortes = [G, 4, 10, 20, 35, 60];
       for (let c = 0; c < cortes.length - 1; c++) {
@@ -608,8 +624,8 @@ export class Pista {
     letreros.forEach((f, i) => malla(f, mat.letreros[i]));
     malla(portones, mat.porton);
     malla(grafitis, mat.grafiti);
-    this.instancias(grupo, techoDetalles.filter((t) => t.tipo === "tanque"), mat.geoTanque, mat.tanque, (t) => [t.s, t.d, t.y + 0.55, true]);
-    this.instancias(grupo, techoDetalles.filter((t) => t.tipo === "fierros"), mat.geoFierros, mat.fierro, (t) => [t.s, t.d, t.y + 0.5, true]);
+    this.instancias(salida, techoDetalles.filter((t) => t.tipo === "tanque"), mat.geoTanque, mat.tanque, (t) => [t.s, t.d, t.y + 0.55, true]);
+    this.instancias(salida, techoDetalles.filter((t) => t.tipo === "fierros"), mat.geoFierros, mat.fierro, (t) => [t.s, t.d, t.y + 0.5, true]);
     malla(techos, mat.techo);
     malla(muros, mat.muroLateral);
     malla(relleno, mat.cerro);
@@ -636,31 +652,22 @@ export class Pista {
       }
     }
     const enPoste = (alto) => (p) => [p.s, p.lado * (ANCHO / 2 + 0.35), (p.s < this.finTierra ? 0.05 : ALTO_VEREDA) + alto];
-    this.instancias(grupo, postesMadera, mat.geoPoste, mat.posteMadera, enPoste(4));
-    this.instancias(grupo, postesMetal, mat.geoPoste, mat.poste, enPoste(4));
+    this.instancias(salida, postesMadera, mat.geoPoste, mat.posteMadera, enPoste(4));
+    this.instancias(salida, postesMetal, mat.geoPoste, mat.poste, enPoste(4));
     // Brazo con lámpara de sodio que cuelga hacia la pista + charco de luz (solo se ve de noche)
     const todos = [...postesMadera, ...postesMetal];
     const hacia = (p) => (p.lado > 0 ? Math.PI : 0);
-    this.instancias(grupo, todos, mat.geoBrazo, mat.poste, (p) => [p.s, p.lado * (ANCHO / 2 - 0.5), enPoste(7.7)(p)[2]], hacia);
-    this.instancias(grupo, todos, mat.geoFoco, mat.foco, (p) => [p.s, p.lado * (ANCHO / 2 - 1.3), enPoste(7.55)(p)[2]], hacia, false);
-    this.instancias(grupo, todos, mat.geoCharco, mat.charco, (p) => [p.s, p.lado * (ANCHO / 2 - 1.3), 0.03], null, false);
-    for (const p of todos) this.lamparas.push(this.aMundo(p.s, p.lado * (ANCHO / 2 - 1.3), enPoste(7.3)(p)[2]));
-    if (lineas.length) {
-      const geo = new THREE.BufferGeometry();
-      geo.setAttribute("position", new THREE.Float32BufferAttribute(lineas, 3));
-      grupo.add(new THREE.LineSegments(geo, mat.cable));
-    }
+    this.instancias(salida, todos, mat.geoBrazo, mat.poste, (p) => [p.s, p.lado * (ANCHO / 2 - 0.5), enPoste(7.7)(p)[2]], hacia);
+    this.instancias(salida, todos, mat.geoFoco, mat.foco, (p) => [p.s, p.lado * (ANCHO / 2 - 1.3), enPoste(7.55)(p)[2]], hacia, false);
+    this.instancias(salida, todos, mat.geoCharco, mat.charco, (p) => [p.s, p.lado * (ANCHO / 2 - 1.3), 0.03], null, false);
+    if (lineas.length) salida.lineas.push({ mat: mat.cable, pos: new Float32Array(lineas) });
 
     // Rompemuelles
-    for (const s of this.rompemuelles) {
-      if (s < s0 || s >= s1) continue;
-      const rm = new THREE.Mesh(mat.geoRompemuelle, mat.rompemuelle);
-      this.aMundo(s, 0, 0.04, rm.position);
-      const m = this.muestra(s);
-      rm.rotation.set(0, -m.th, 0, "YXZ");
-      rm.rotation.x = -Math.atan(m.g);
-      grupo.add(rm);
-    }
+    const rompe = this.rompemuelles.filter((s) => s >= s0 && s < s1).map((s) => {
+      const m = this.muestra(s), p = this.aMundo(s, 0, 0.04);
+      return { x: p.x, y: p.y, z: p.z, rx: -Math.atan(m.g), ry: -m.th };
+    });
+    this.instanciasLibres(salida, mat.geoRompemuelle, mat.rompemuelle, rompe, false);
   }
 
   // Cerro alto: berma de tierra, pircas, ladera y chozas
@@ -707,7 +714,7 @@ export class Pista {
     malla(huellas, mat.huella, false);
   }
 
-  construirCerro(grupo, a, b, mat, tira, nuevo, malla) {
+  construirCerro(salida, a, b, mat, tira, nuevo, malla) {
     const berma = nuevo(), pirca = nuevo(), ladera = nuevo();
     const dP = ANCHO / 2 + BERMA, GROSOR = 0.5, ALTO = 0.9;
     // Terrazas de pirca de este bloque: se juntan en dos mallas (lados de piedra y tope de tierra)
@@ -732,7 +739,7 @@ export class Pista {
     malla(berma, mat.tierra);
     malla(pirca, mat.pircaLisa);
     malla(ladera, mat.cerro);
-    this.construirDetallesCerro(grupo, a, b, mat);
+    this.construirDetallesCerro(salida, a, b, mat);
 
     for (const c of this.chozas) {
       if (c.s < a * PASO || c.s >= b * PASO) continue;
@@ -746,16 +753,15 @@ export class Pista {
         this.casita(c.s, d, base, rumbo, frente, fondo, c.pisos * 2.7 + 0.2, c.tex, c.lado);
         continue;
       }
-      if (typeof modelos.crearChoza !== "function") continue;
-      const choza = modelos.crearChoza({ variante: c.variante });
-      // El frente del modelo mira a +X: ese lado da a la trocha, así que su "ancho" va a lo largo de d
-      const fondo = (choza.userData.ancho || 3.5) * c.escala, frente = (choza.userData.largo || 4.5) * c.escala;
+      // El frente del modelo mira a +X: ese lado da a la trocha, así que su "ancho" va a lo largo de d.
+      // Las medidas de cada variante las entrega quien arma los bloques (medidasChoza).
+      const medida = (this.medidasChoza && this.medidasChoza[c.variante]) || { ancho: 3.5, largo: 4.5 };
+      const fondo = medida.ancho * c.escala, frente = medida.largo * c.escala;
       const d = c.lado * (dP + GROSOR + c.retiro + fondo / 2);
       const base = this.plataforma(c.s, d, frente + 0.6, fondo + 0.6, rumbo);
-      this.aMundo(c.s, d, base, choza.position);
-      choza.rotation.y = rumbo + (c.lado > 0 ? Math.PI : 0);
-      choza.scale.set(c.escala, 0.92 + (c.escala - 0.85) * 0.4, c.escala);
-      grupo.add(choza);
+      const p = this.aMundo(c.s, d, base);
+      salida.modelos.push({ fabrica: "choza", variante: c.variante, pos: [p.x, p.y, p.z],
+        rotY: rumbo + (c.lado > 0 ? Math.PI : 0), escala: [c.escala, 0.92 + (c.escala - 0.85) * 0.4, c.escala] });
     }
     const t = this._terrazas;
     malla(t.lados, mat.pircaLisa);
@@ -829,99 +835,79 @@ export class Pista {
   }
 
   // Un InstancedMesh por tipo de objeto repetido en el bloque (postes, focos, tanques…)
-  instancias(grupo, lista, geo, material, posicion, giroExtra = null, sombra = true) {
+  instancias(salida, lista, geo, material, posicion, giroExtra = null, sombra = true) {
     if (!lista.length) return;
-    const inst = new THREE.InstancedMesh(geo, material, lista.length);
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), esc = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
-    lista.forEach((o, k) => {
+    const v = new THREE.Vector3();
+    this.instanciasLibres(salida, geo, material, lista.map((o) => {
       // posicion(o) → [s, d, altura, absoluta]: altura sobre la calzada, o cota del mundo si absoluta
       const [s, d, y, absoluta] = posicion(o);
       const m = this.muestra(s);
       this.aMundo(s, d, 0, v);
-      v.y = absoluta ? y : m.y + y;
-      m4.compose(v, q.setFromEuler(e.set(0, -m.th + (giroExtra ? giroExtra(o) : 0), 0)), esc);
-      inst.setMatrixAt(k, m4);
-    });
-    inst.castShadow = sombra;
-    grupo.add(inst);
+      return { x: v.x, y: absoluta ? y : m.y + y, z: v.z, ry: -m.th + (giroExtra ? giroExtra(o) : 0) };
+    }), sombra);
+  }
+
+  // Instancias con posición y giro ya calculados: [{x, y, z, rx?, ry, rz?}] → matrices en un Float32Array
+  instanciasLibres(salida, geo, material, items, sombra = true, colores = null) {
+    if (!items.length) return;
+    const matrices = new Float32Array(items.length * 16);
+    items.forEach((it, k) => matrizYXZ(matrices, k * 16, it.x, it.y, it.z, it.rx || 0, it.ry || 0, it.rz || 0));
+    salida.inst.push({ geo, mat: material, matrices, colores, sombra });
   }
 
   // Postes a lo largo del borde del mirador (un InstancedMesh por bloque)
-  postesBarrera(grupo, a, b, d, cada, geo, material, alto) {
+  postesBarrera(salida, a, b, d, cada, geo, material, alto) {
     const puestos = [];
     for (let s = Math.ceil((a * PASO) / cada) * cada; s < b * PASO; s += cada) puestos.push(s);
-    if (!puestos.length) return;
-    const inst = new THREE.InstancedMesh(geo, material, puestos.length);
-    const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), esc = new THREE.Vector3(1, 1, 1), v = new THREE.Vector3();
-    puestos.forEach((s, k) => {
-      this.aMundo(s, d, this.alturaLateral(d - 0.01, s) + alto, v);
-      m4.compose(v, q.setFromEuler(e.set(0, -this.muestra(s).th, 0)), esc);
-      inst.setMatrixAt(k, m4);
-    });
-    inst.castShadow = true;
-    grupo.add(inst);
+    this.instanciasLibres(salida, geo, material, puestos.map((s) => {
+      const p = this.aMundo(s, d, this.alturaLateral(d - 0.01, s) + alto);
+      return { x: p.x, y: p.y, z: p.z, ry: -this.muestra(s).th };
+    }));
   }
 
-  construirDetallesCerro(grupo, a, b, mat) {
+  construirDetallesCerro(salida, a, b, mat) {
     const s0 = a * PASO, s1 = b * PASO;
     const v = new THREE.Vector3();
-    // Llantas pintadas (blanco / rojo) semienterradas en la berma
-    const puestos = [];
+    // Llantas pintadas (blanco / rojo) semienterradas en la berma; el aro mira hacia la trocha
+    const llantas = [];
     for (const t of this.llantas) {
-      for (let s = Math.max(t.s0, s0); s < Math.min(t.s1, s1); s += 0.75) puestos.push([s, t.lado]);
+      for (let s = Math.max(t.s0, s0); s < Math.min(t.s1, s1); s += 0.75) {
+        this.aMundo(s, t.lado * (ANCHO / 2 + BERMA - 0.45), 0.05, v);
+        llantas.push({ x: v.x, y: v.y, z: v.z, ry: -this.muestra(s).th + Math.PI / 2 });
+      }
     }
-    if (puestos.length) {
-      const inst = new THREE.InstancedMesh(mat.geoLlanta, mat.llantaPintada, puestos.length);
-      const m4 = new THREE.Matrix4(), q = new THREE.Quaternion(), e = new THREE.Euler(), esc = new THREE.Vector3(1, 1, 1);
-      const blanco = new THREE.Color(0xf2f2f2), rojo = new THREE.Color(0xc8102e);
-      puestos.forEach(([s, lado], k) => {
-        const m = this.muestra(s);
-        this.aMundo(s, lado * (ANCHO / 2 + BERMA - 0.45), 0.05, v);
-        e.set(0, -m.th + Math.PI / 2, 0, "YXZ");   // el aro mira hacia la trocha
-        m4.compose(v, q.setFromEuler(e), esc);
-        inst.setMatrixAt(k, m4);
-        inst.setColorAt(k, k % 2 ? rojo : blanco);
-      });
-      inst.castShadow = true;
-      grupo.add(inst);
-    }
+    const colores = new Float32Array(llantas.length * 3);
+    llantas.forEach((_, k) => colores.set(k % 2 ? [0.578, 0.0056, 0.0273] : [0.888, 0.888, 0.888], k * 3));   // rojo / blanco (lineal)
+    this.instanciasLibres(salida, mat.geoLlanta, mat.llantaPintada, llantas, true, colores);
     // Cruz blanca en la cima del cerro
     if (this.cruz.s >= s0 && this.cruz.s < s1) {
-      const cruz = new THREE.Group();
-      const palo = new THREE.Mesh(new THREE.BoxGeometry(0.6, 9, 0.6), mat.cruz);
-      palo.position.y = 4.5;
-      const brazo = new THREE.Mesh(new THREE.BoxGeometry(4.5, 0.6, 0.6), mat.cruz);
-      brazo.position.y = 6.6;
-      cruz.add(palo, brazo);
       const rumbo = -this.muestra(this.cruz.s).th;
       const base = this.plataforma(this.cruz.s, this.cruz.d, 2.4, 2.4, rumbo);
-      this.aMundo(this.cruz.s, this.cruz.d, base, cruz.position);
-      cruz.rotation.y = rumbo;
-      grupo.add(cruz);
+      const p = this.aMundo(this.cruz.s, this.cruz.d, base);
+      this.instanciasLibres(salida, mat.geoCruzPalo, mat.cruz, [{ x: p.x, y: p.y + 4.5, z: p.z, ry: rumbo }]);
+      this.instanciasLibres(salida, mat.geoCruzBrazo, mat.cruz, [{ x: p.x, y: p.y + 6.6, z: p.z, ry: rumbo }]);
     }
     // Ropa tendida entre dos palos junto a las chozas
+    const palos = [], prendas = new Map();   // clave de geometría → { mat, items }
     for (const t of this.tendederos) {
       if (t.s < s0 || t.s >= s1) continue;
       const d = t.lado * (ANCHO / 2 + BERMA + 1.5);
       const pA = this.aMundo(t.s - 3, d, this.alturaTerreno(t.s - 3, d));
       const pB = this.aMundo(t.s + 3, d, this.alturaTerreno(t.s + 3, d));
-      for (const p of [pA, pB]) {
-        const palo = new THREE.Mesh(mat.geoPalo, mat.posteMadera);
-        palo.position.copy(p).add(v.set(0, 0.9, 0));
-        grupo.add(palo);
-      }
+      for (const p of [pA, pB]) palos.push({ x: p.x, y: p.y + 0.9, z: p.z });
       // Ropa y alguna frazada (la de tigre no puede faltar)
-      const sem = Math.round(t.s);
+      const sem = Math.round(t.s), giro = -this.muestra(t.s).th + Math.PI / 2;
       for (let k = 1; k < 7; k++) {
         const frazada = k === 2 + (sem % 3);
         const geo = frazada ? mat.geoFrazadas[sem % 4] : mat.geoPrendas[(k + sem) % mat.geoPrendas.length];
-        const prenda = new THREE.Mesh(geo, frazada ? mat.frazada : mat.ropa);
-        prenda.position.lerpVectors(pA, pB, k / 7);
-        prenda.position.y += 2.05 - Math.sin((k / 7) * Math.PI) * 0.2;
-        prenda.rotation.y = -this.muestra(t.s).th + Math.PI / 2;
-        grupo.add(prenda);
+        if (!prendas.has(geo)) prendas.set(geo, { mat: frazada ? mat.frazada : mat.ropa, items: [] });
+        const f = k / 7;
+        prendas.get(geo).items.push({ x: pA.x + (pB.x - pA.x) * f, y: pA.y + (pB.y - pA.y) * f + 2.05 - Math.sin(f * Math.PI) * 0.2,
+          z: pA.z + (pB.z - pA.z) * f, ry: giro });
       }
     }
+    this.instanciasLibres(salida, mat.geoPalo, mat.posteMadera, palos);
+    for (const [geo, { mat: material, items }] of prendas) this.instanciasLibres(salida, geo, material, items, false);
     // Cilindros azules de agua junto a algunas chozas de la primera fila
     const bidones = [];
     for (const c of this.chozas) {
@@ -930,7 +916,7 @@ export class Pista {
       const base = this.plataforma(c.s - 2.5, d, 1, 1, -this.muestra(c.s).th);
       bidones.push([c.s - 2.5, d, this.muestra(c.s - 2.5).y + base + 0.45]);
     }
-    this.instancias(grupo, bidones, mat.geoCilindro, mat.cilindro, (b) => [b[0], b[1], b[2], true]);
+    this.instancias(salida, bidones, mat.geoCilindro, mat.cilindro, (b) => [b[0], b[1], b[2], true]);
   }
 
   construirFinal(escena) {

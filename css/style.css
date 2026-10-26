@@ -253,12 +253,31 @@ html, body {
 @media (pointer: fine) { .zona-giro, #hud > .flecha { display: none; } }
 @media (max-height: 430px) { .opciones { gap: 4px; } .btn-chico { padding: 5px 9px; font-size: 13px; } .acciones { gap: 6px; } }
 
-/* Celular en vertical (tipo TikTok): fila de pedales abajo, corazones y mensajes encima */
+/* Las zonas de giro nunca se pintan: solo la flechita muestra que se está girando */
+.zona-giro { background: transparent; outline: none; -webkit-tap-highlight-color: transparent; }
+
+/* Celular en vertical (tipo TikTok): botones chicos según el ancho, fila de pedales abajo,
+   corazones y mensajes encima. Las zonas de giro (media pantalla) siguen igual. */
 @media (orientation: portrait) and (pointer: coarse) {
-  .btn-ctrl.freno { width: 94px; }
-  #b-centrar { font-size: 13px; padding: 0 9px; }
-  #vidas { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 72px); }
-  #mensajes { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 124px); max-width: 70vw; }
+  .ctrl { gap: 8px; bottom: max(10px, env(safe-area-inset-bottom)); }
+  .btn-ctrl.freno { width: clamp(64px, 19vw, 84px); height: 46px; font-size: 12px; border-radius: 12px; }
+  .btn-ctrl.acelerador { width: clamp(72px, 22vw, 96px); height: 48px; font-size: 12px; border-radius: 12px; }
+  #b-centrar { height: 44px; font-size: 11px; padding: 0 8px; border-radius: 12px; }
+  #hud > .flecha {
+    top: 60%;
+    width: clamp(46px, 13vw, 56px);
+    height: clamp(46px, 13vw, 56px);
+    font-size: 20px;
+    border-width: 2px;
+    background: rgba(0, 0, 0, 0.3);
+  }
+  #hud > .flecha.activo { background: rgba(255, 210, 0, 0.9); border-color: #ffd200; color: #222; }
+  .direccion-izq { left: max(10px, env(safe-area-inset-left)); }
+  .direccion-der { right: max(10px, env(safe-area-inset-right)); }
+  .btn-hud { width: 44px; height: 44px; font-size: 16px; }
+  #vidas { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 54px); }
+  #vidas svg { width: clamp(24px, 7vw, 32px); }
+  #mensajes { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 96px); max-width: 70vw; }
   .tablero { padding: 4px 10px; gap: 8px; }
   .vel span { font-size: 30px; }
   .barras { grid-template-columns: auto 70px; }

@@ -1,7 +1,8 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=1.0.1";
-import { LARGO_TORITO, ANCHO_TORITO } from "./vehiculo.js?v=1.0.1";
-import * as modelos from "./modelos.js?v=1.0.1";
+import { ANCHO, VEREDA } from "./pista.js?v=1.1.0";
+import { LARGO_TORITO, ANCHO_TORITO } from "./vehiculo.js?v=1.1.0";
+import * as modelos from "./modelos.js?v=1.1.0";
+import { reserva } from "./reciclaje.js?v=1.1.0";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -67,18 +68,38 @@ export class Trafico {
       case "combi": return crearCarro({ tipo: "combi" });
       case "bus": return crearCarro({ tipo: "bus" });
       case "torito": {
-        const [color, techo] = COLORES_TORITO[(Math.random() * COLORES_TORITO.length) | 0];
+        const [color, techo] = COLORES_TORITO[extra.colorTorito ?? 0];
         return crearTorito({ color, techo, detalle: "bajo" });
       }
       case "persona": return crearPersona({ tipo: extra.tipoPersona });
       case "perro": return crearPerro();
-      case "obra": return modelos.crearObra ? modelos.crearObra({ variante: (Math.random() * 3) | 0 }) : cajaRespaldo(0xb5653d, 3, 2, 1.2);
+      case "obra": return modelos.crearObra ? modelos.crearObra({ variante: extra.varianteObra ?? 0 }) : cajaRespaldo(0xb5653d, 3, 2, 1.2);
       case "desmonte": return modelos.crearDesmonte ? modelos.crearDesmonte({ tamano: 0.8 + Math.random() * 0.5 }) : cajaRespaldo(0x8b7d6b, 2.5, 2, 0.9);
     }
   }
 
+  // Clave de reciclaje: mismo tipo y variante se pueden reusar tal cual
+  claveModelo(tipo, extra) {
+    if (tipo === "torito") {
+      extra.colorTorito ??= (Math.random() * COLORES_TORITO.length) | 0;
+      return `torito|${extra.colorTorito}`;
+    }
+    if (tipo === "persona") {
+      extra.tipoPersona ??= elegir(["senora", "senora", "viejo", "joven"]);
+      return `persona|${extra.tipoPersona}`;
+    }
+    if (tipo === "obra") {
+      extra.varianteObra ??= (Math.random() * 3) | 0;
+      return `obra|${extra.varianteObra}`;
+    }
+    return tipo;
+  }
+
   agregar(tipo, s, d, v, extra = {}) {
-    const modelo = this.crearModelo(tipo, extra);
+    const modelo = reserva.tomar(this.claveModelo(tipo, extra), () => this.crearModelo(tipo, extra));
+    // Un modelo reciclado llega con la pose del anterior: se deja derecho y quieto
+    modelo.rotation.set(0, 0, 0);
+    if (modelo.userData.piernas || modelo.userData.patas) animarCaminar(modelo, 0);
     this.escena.add(modelo);
     const medidas = { ...MEDIDAS[tipo] };
     if (modelo.userData.largo) { medidas.largo = modelo.userData.largo; medidas.ancho = modelo.userData.ancho; }
@@ -145,9 +166,14 @@ export class Trafico {
     if (!a.peaton) a.modelo.rotation.x = -Math.atan(m.g) * (a.v < 0 || a.sentido < 0 ? -1 : 1);
   }
 
-  reiniciar() {
-    for (const a of this.agentes) { this.escena.remove(a.modelo); modelos.liberarRecursos(a.modelo); }
+  // Devuelve todos los modelos a la reserva (al reiniciar o al cambiar de partida)
+  liberarTodo() {
+    for (const a of this.agentes) reserva.devolver(a.modelo, modelos.liberarRecursos);
     this.agentes = [];
+  }
+
+  reiniciar() {
+    this.liberarTodo();
     this.tSubida = 2; this.tLento = 8;
     this.tiempo = 0; this.gritos.length = 0;
     this.sembrar();
@@ -230,7 +256,7 @@ export class Trafico {
     let restantes = 0;
     for (const a of this.agentes) {
       const fuera = a.s < veh.s - 60 || a.s > p.largo;
-      if (fuera) { this.escena.remove(a.modelo); modelos.liberarRecursos(a.modelo); }
+      if (fuera) reserva.devolver(a.modelo, modelos.liberarRecursos);
       else this.agentes[restantes++] = a;
     }
     this.agentes.length = restantes;

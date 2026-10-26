@@ -1,4 +1,4 @@
-import { ANCHO } from "./pista.js?v=1.0.1";
+import { ANCHO } from "./pista.js?v=1.1.0";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
