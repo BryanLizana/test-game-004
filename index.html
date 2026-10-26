@@ -87,19 +87,17 @@
       </div>
     </div>
 
+    <!-- Flechas siempre visibles en las esquinas inferiores (se pueden usar junto con el giroscopio) -->
     <div class="ctrl ctrl-izq">
-      <button id="b-izq" class="btn-ctrl">◀</button>
-      <button id="b-der" class="btn-ctrl">▶</button>
-      <button id="b-centrar" class="btn-ctrl chico oculto">⟲ centrar</button>
+      <button id="b-izq" class="btn-ctrl flecha" aria-label="Izquierda">◀</button>
+      <div class="col">
+        <button id="b-centrar" class="btn-ctrl chico oculto">⟲ centrar</button>
+        <button id="b-claxon" class="btn-ctrl chico" aria-label="Claxon">📯</button>
+      </div>
     </div>
     <div class="ctrl ctrl-der">
-      <div class="col">
-        <button id="b-freno" class="btn-ctrl freno">FRENO</button>
-        <div class="fila">
-          <button id="b-claxon" class="btn-ctrl chico" aria-label="Claxon">📯</button>
-          <button id="b-camara" class="btn-ctrl chico" aria-label="Cámara">🎥</button>
-        </div>
-      </div>
+      <button id="b-freno" class="btn-ctrl freno">FRENO</button>
+      <button id="b-der" class="btn-ctrl flecha" aria-label="Derecha">▶</button>
     </div>
   </div>
 

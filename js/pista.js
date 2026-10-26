@@ -141,7 +141,7 @@ export class Pista {
 
   // Pista en mal estado: ondulaciones que el torito sin amortiguador siente todo el rato
   rugosidad(s, d) {
-    const amp = 0.014 + 0.03 * (0.5 + 0.5 * Math.sin(s * 0.013 + 1.7));
+    const amp = (0.014 + 0.03 * (0.5 + 0.5 * Math.sin(s * 0.013 + 1.7))) * 0.9;
     const r = Math.sin(s * 1.9 + d * 1.1) * 0.45 + Math.sin(s * 4.7 - d * 2.3) * 0.35 + Math.sin(s * 9.1 + d * 5.7) * 0.2;
     const zona = s < this.finTierra ? 2.2 : 1;   // la trocha es peor
     return amp * r * zona * (Math.abs(d) > ANCHO / 2 && s >= this.finTierra ? 0.3 : 1);

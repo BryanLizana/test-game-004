@@ -393,7 +393,7 @@ function colocarCamara(dt, instantaneo = false) {
   const rumbo = m.th + v.psi;
   const adelante = vTmp2.set(Math.sin(rumbo), 0, -Math.cos(rumbo));
   tRuido += dt;
-  const intensidad = Math.min(1, v.v / 25) * 0.6 + v.sacudida;
+  const intensidad = (Math.min(1, v.v / 25) * 0.6 + v.sacudida) * 0.9;
   if (partes.conductor) partes.conductor.visible = modoCamara === 0;
 
   if (modoCamara === 1) {
@@ -556,7 +556,7 @@ function perderVida(motivo) {
   vidas--;
   dibujarVidas(vidas);
   sonido.golpe(1);
-  if (navigator.vibrate) navigator.vibrate([150, 60, 250]);
+  if (navigator.vibrate) navigator.vibrate([135, 60, 225]);
   if (vidas <= 0) return terminar(false, motivo);
   aviso(motivo, 1.6);
   setTimeout(revivir, 1600);
@@ -595,7 +595,7 @@ function procesarChoque({ agente, vRel }) {
     vehiculo.sacudida = 1.3;
     sonido.golpe(Math.min(1, vRel / 10));
     aviso("¡Te metiste al desmonte!", 1.5);
-    if (navigator.vibrate) navigator.vibrate(120);
+    if (navigator.vibrate) navigator.vibrate(108);
     return;
   }
   if (vRel > 9) {
@@ -608,14 +608,14 @@ function procesarChoque({ agente, vRel }) {
   agente.v = 0;
   sonido.golpe(Math.min(1, vRel / 9));
   aviso("¡Pum! Cuidado", 1.2);
-  if (navigator.vibrate) navigator.vibrate(80);
+  if (navigator.vibrate) navigator.vibrate(72);
 }
 
 function procesarEventos() {
   for (const e of eventos.splice(0)) {
     if (e.tipo === "golpe") {
       sonido.golpe(e.fuerza);
-      if (navigator.vibrate) navigator.vibrate(Math.round(30 + e.fuerza * 80));
+      if (navigator.vibrate) navigator.vibrate(Math.round((30 + e.fuerza * 80) * 0.9));
     } else if (e.tipo === "aviso") {
       aviso(e.texto, 2.5);
     } else if (e.tipo === "choque") {
@@ -679,8 +679,6 @@ $("btn-jugar").addEventListener("click", async () => {
   // Si el giroscopio responde, se ocultan las flechas táctiles
   setTimeout(() => {
     const usa = controles.usandoSensor && sensores;
-    $("b-izq").classList.toggle("oculto", usa);
-    $("b-der").classList.toggle("oculto", usa);
     $("b-centrar").classList.toggle("oculto", !usa);
   }, 600);
 });
@@ -737,7 +735,6 @@ controles.botonMantener($("b-izq"), () => (controles.botones.izq = true), () => 
 controles.botonMantener($("b-der"), () => (controles.botones.der = true), () => (controles.botones.der = false));
 controles.botonMantener($("b-freno"), () => (controles.botones.freno = true), () => (controles.botones.freno = false));
 controles.botonMantener($("b-claxon"), () => controles.alClaxon(true), () => controles.alClaxon(false));
-controles.botonMantener($("b-camara"), alternarCamara);
 controles.botonMantener($("b-centrar"), () => { controles.calibrar(); aviso("Timón centrado", 1); });
 
 // Escena de fondo detrás del menú mientras se juega la primera vez
