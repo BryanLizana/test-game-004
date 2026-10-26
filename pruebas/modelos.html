@@ -1,0 +1,200 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no">
+  <title>Visor de modelos</title>
+  <style>
+    html, body { margin: 0; height: 100%; overflow: hidden; background: #cfd8e3; font-family: system-ui, sans-serif; }
+    canvas { display: block; }
+    #ui { position: fixed; top: 10px; left: 10px; right: 10px; display: flex; flex-wrap: wrap; gap: 6px; pointer-events: none; }
+    #ui button { pointer-events: auto; font: 600 14px system-ui; padding: 8px 12px; border: 0; border-radius: 8px;
+      background: #c8102e; color: #fff; box-shadow: 0 2px 6px rgba(0,0,0,.25); }
+    #ui button.activo { background: #f2c200; color: #222; }
+    #info { position: fixed; left: 10px; bottom: 10px; font: 12px/1.4 monospace; color: #222;
+      background: rgba(255,255,255,.75); padding: 6px 8px; border-radius: 6px; white-space: pre; }
+  </style>
+  <script type="importmap">
+    {"imports":{"three":"https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js","three/addons/":"https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"}}
+  </script>
+</head>
+<body>
+  <div id="ui">
+    <button id="btn-ojo">Vista conductor</button>
+    <button id="btn-anim" class="activo">Animación</button>
+    <button id="btn-cond">Ocultar conductor</button>
+    <button id="btn-faro">Faro</button>
+  </div>
+  <div id="info"></div>
+  <script type="module">
+    import * as THREE from "three";
+    import { OrbitControls } from "three/addons/controls/OrbitControls.js";
+    import { RoomEnvironment } from "three/addons/environments/RoomEnvironment.js";
+    import { crearTorito, crearCarro, crearPersona, crearPerro, crearGato, animarCaminar,
+      crearObra, crearDesmonte, crearChoza, crearPirca, materialTierra } from "../js/modelos.js";
+
+    const renderer = new THREE.WebGLRenderer({ antialias: true });
+    renderer.setPixelRatio(Math.min(devicePixelRatio, 2));
+    renderer.setSize(innerWidth, innerHeight);
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
+    document.body.appendChild(renderer.domElement);
+
+    const escena = new THREE.Scene();
+    escena.background = new THREE.Color(0xcfd8e3);
+    // Respaldo del visor: el motor pone su propio scene.environment (panorama PMREM)
+    escena.environment = new THREE.PMREMGenerator(renderer).fromScene(new RoomEnvironment(), 0.04).texture;
+    escena.fog = new THREE.Fog(0xcfd8e3, 30, 80);
+
+    const camOrbita = new THREE.PerspectiveCamera(50, innerWidth / innerHeight, 0.05, 200);
+    camOrbita.position.set(-9, 7, -9);
+    const camOjo = new THREE.PerspectiveCamera(74, innerWidth / innerHeight, 0.03, 200);
+    let camara = camOrbita;
+    const controles = new OrbitControls(camOrbita, renderer.domElement);
+    controles.target.set(2, 0.8, 5);
+    controles.update();
+
+    escena.add(new THREE.HemisphereLight(0xeaf2ff, 0x6b5a48, 1.1));
+    const sol = new THREE.DirectionalLight(0xfff2e0, 2.2);
+    sol.position.set(-6, 10, -4);
+    sol.castShadow = true;
+    sol.shadow.mapSize.set(2048, 2048);
+    Object.assign(sol.shadow.camera, { left: -20, right: 20, top: 20, bottom: -20, near: 1, far: 60 });
+    escena.add(sol);
+
+    const suelo = new THREE.Mesh(new THREE.PlaneGeometry(80, 80), new THREE.MeshStandardMaterial({ color: 0x8f8a82, roughness: 0.95 }));
+    suelo.rotation.x = -Math.PI / 2;
+    suelo.receiveShadow = true;
+    escena.add(suelo);
+    const rejilla = new THREE.GridHelper(80, 80, 0x6d6862, 0x7d7871);
+    rejilla.position.y = 0.002;
+    escena.add(rejilla);
+
+    // Modelos (todos miran hacia -Z)
+    const torito = crearTorito();
+    escena.add(torito);
+    // Torito de tráfico (detalle bajo)
+    const toritoBajo = crearTorito({ detalle: "bajo", color: 0x1a4fa0 });
+    toritoBajo.position.set(0, 0, 3.6);
+    escena.add(toritoBajo);
+    const carro = crearCarro();
+    carro.position.set(3.2, 0, 0);
+    escena.add(carro);
+    const combi = crearCarro({ tipo: "combi" });
+    combi.position.set(6.2, 0, 0);
+    escena.add(combi);
+    const personas = ["senora", "viejo", "joven", undefined].map((tipo, i) => {
+      const p = crearPersona({ tipo });
+      p.position.set(-2.0 - i * 0.8, 0, 0);
+      escena.add(p);
+      return p;
+    });
+    const perro = crearPerro();
+    perro.position.set(-5.4, 0, 0);
+    escena.add(perro);
+    const gatos = ["naranja", "negro", "gris", "blanconegro"].map((pelaje, i) => {
+      const g = crearGato({ pelaje });
+      g.position.set(-6.2 - i * 0.5, 0, 0);
+      escena.add(g);
+      return g;
+    });
+
+    // Fila 2: objetos estáticos (obra, desmonte, chozas, pirca)
+    const estaticos = [];
+    const ponEstatico = (nombre, o, x, z, ry = 0) => { o.position.set(x, 0, z); o.rotation.y = ry; escena.add(o); estaticos.push([nombre, o]); return o; };
+    [0, 1, 2].forEach((v) => ponEstatico(`obra ${v}`, crearObra({ variante: v }), -5 + v * 3, 7));
+    ponEstatico("desmonte", crearDesmonte(), 4.5, 7);
+    ponEstatico("desmonte 1.5", crearDesmonte({ tamano: 1.5 }), 8.5, 7);
+    // Chozas: el frente (+X) rotado hacia la cámara inicial (-Z)
+    [0, 1, 2].forEach((v) => ponEstatico(`choza ${v}`, crearChoza({ variante: v }), -6 + v * 6, 14, Math.PI / 2));
+    ponEstatico("pirca 4", crearPirca(4), 12, 7);
+    ponEstatico("pirca 7", crearPirca(7), 12, 14, Math.PI / 2);
+    // Parche de tierra para probar materialTierra()
+    const geoTierra = new THREE.PlaneGeometry(6, 6);
+    geoTierra.attributes.uv.array.forEach((_, i, a) => (a[i] *= 3));
+    const tierra = new THREE.Mesh(geoTierra, materialTierra());
+    tierra.rotation.x = -Math.PI / 2;
+    tierra.position.set(-12, 0.005, 7);
+    tierra.receiveShadow = true;
+    escena.add(tierra);
+
+    // Info de triángulos
+    const tris = (o) => { let n = 0, d = 0; o.traverse((m) => { if (m.isMesh) { d++; const g = m.geometry; n += (g.index ? g.index.count : g.attributes.position.count) / 3; } }); return `${n} tris ${String(d).padStart(3)} mallas`; };
+    const tam = (o) => new THREE.Box3().setFromObject(o, true).getSize(new THREE.Vector3()).toArray().map((v) => v.toFixed(2)).join("×");
+    document.getElementById("info").textContent = [
+      ["torito", torito], ["torito bajo", toritoBajo], ["carro", carro], ["combi", combi],
+      ...personas.map((p) => [`persona ${p.userData.tipo}`, p]), ["perro", perro], ["gato", gatos[0]],
+      ...estaticos,
+    ].map(([n, o]) => `${n.padEnd(12)} ${tris(o).padStart(20)}  ${tam(o)} m` +
+      (o.userData.largo ? `  huella ${o.userData.largo}×${o.userData.ancho}` : "")).join("\n");
+
+    // Botones
+    const ud = torito.userData;
+    let animar = location.hash !== "#ojo169";
+    const btnOjo = document.getElementById("btn-ojo");
+    btnOjo.onclick = () => {
+      const enOjo = camara === camOjo;
+      camara = enOjo ? camOrbita : camOjo;
+      controles.enabled = enOjo;
+      if (ud.conductor) ud.conductor.visible = enOjo;
+      btnOjo.classList.toggle("activo", !enOjo);
+      btnOjo.textContent = enOjo ? "Vista conductor" : "Vista órbita";
+    };
+    if (location.hash.startsWith("#ojo")) btnOjo.onclick(); // abrir directo en vista conductor
+    if (location.hash === "#ojo169") { document.getElementById("ui").style.display = "none"; document.getElementById("info").style.display = "none"; }
+    document.getElementById("btn-anim").onclick = (e) => { animar = !animar; e.target.classList.toggle("activo", animar); };
+    document.getElementById("btn-cond").onclick = (e) => {
+      if (!ud.conductor) return;
+      ud.conductor.visible = !ud.conductor.visible;
+      e.target.textContent = ud.conductor.visible ? "Ocultar conductor" : "Mostrar conductor";
+    };
+    document.getElementById("btn-faro").onclick = (e) => {
+      const m = ud.faro.material;
+      m.emissiveIntensity = m.emissiveIntensity > 0.5 ? 0.15 : 2.5;
+      e.target.classList.toggle("activo", m.emissiveIntensity > 0.5);
+    };
+
+    // #ojo169: vista conductor en un lienzo 16:9 (para comparar con la referencia)
+    function ajustar() {
+      let w = innerWidth, h = innerHeight;
+      if (location.hash === "#ojo169") { h = Math.min(h, Math.round(w * 9 / 16)); w = Math.round(h * 16 / 9); }
+      for (const c of [camOrbita, camOjo]) { c.aspect = w / h; c.updateProjectionMatrix(); }
+      renderer.setSize(w, h);
+    }
+    addEventListener("resize", ajustar);
+    ajustar();
+
+    const reloj = new THREE.Clock();
+    let t = 0;
+    renderer.setAnimationLoop(() => {
+      const dt = reloj.getDelta();
+      if (animar) {
+        t += dt;
+        const giro = dt * 6;
+        ud.ruedaDelantera.rotation.x -= giro / 0.2;
+        ud.ruedasTraseras.forEach((r) => (r.rotation.x -= giro / 0.21));
+        ud.direccion.rotation.y = Math.sin(t * 0.9) * 0.35;
+        ud.carroceria.rotation.z = Math.sin(t * 0.9) * 0.04;
+        ud.aguja.rotation.z = 2.2 - 4.4 * (0.5 + 0.5 * Math.sin(t * 0.5));
+        ud.adorno.rotation.x = Math.sin(t * 2.3) * 0.25;
+        ud.adorno.rotation.z = Math.sin(t * 0.9) * -0.3;
+        for (const c of [carro, combi]) c.userData.ruedas.forEach((r) => (r.rotation.x -= giro / 0.3));
+        toritoBajo.userData.ruedaDelantera.rotation.x -= giro / 0.2;
+        toritoBajo.userData.ruedasTraseras.forEach((r) => (r.rotation.x -= giro / 0.21));
+        toritoBajo.userData.direccion.rotation.y = Math.sin(t * 0.9) * 0.35;
+        personas.forEach((p, i) => animarCaminar(p, t + i * 0.3, i === 2 ? 3 : 1.6));
+        animarCaminar(perro, t);
+        gatos.forEach((g, i) => animarCaminar(g, t + i * 0.2, 1.2));
+      }
+      if (camara === camOjo) {
+        torito.updateMatrixWorld(true);
+        ud.ojoConductor.getWorldPosition(camOjo.position);
+        ud.ojoConductor.getWorldQuaternion(camOjo.quaternion);
+      } else {
+        controles.update();
+      }
+      renderer.render(escena, camara);
+    });
+  </script>
+</body>
+</html>

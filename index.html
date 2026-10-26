@@ -1,0 +1,108 @@
+<!doctype html>
+<html lang="es">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+  <meta name="theme-color" content="#c8102e">
+  <meta name="mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <title>¡Sin Frenos! Torito</title>
+  <link rel="stylesheet" href="css/style.css">
+  <script type="importmap">
+    {
+      "imports": {
+        "three": "https://cdn.jsdelivr.net/npm/three@0.160.0/build/three.module.js",
+        "three/addons/": "https://cdn.jsdelivr.net/npm/three@0.160.0/examples/jsm/"
+      }
+    }
+  </script>
+</head>
+<body>
+  <div id="escena"></div>
+
+  <!-- Pantalla de inicio -->
+  <section id="inicio" class="pantalla visible">
+    <div class="titulo">
+      <h1>¡SIN FRENOS!</h1>
+      <p class="sub">Torito en bajada · Simulador</p>
+    </div>
+    <div class="acciones">
+      <button id="btn-jugar" class="btn" disabled>CARGANDO…</button>
+      <div class="opciones">
+        <button id="btn-invertir" class="btn-chico">Invertir giro: NO</button>
+        <button id="btn-camara-ini" class="btn-chico">Cámara: 1ª persona</button>
+        <button id="btn-hora" class="btn-chico">Hora: Día ☀️</button>
+      </div>
+      <p class="ayuda">
+        <b>Celular:</b> pon el teléfono horizontal y gíralo como un timón.<br>
+        <b>PC:</b> ← → dirección · S freno (se gasta) · H claxon · C cámara
+      </p>
+      <p class="aviso-girar">↻ Gira el celular en horizontal</p>
+    </div>
+  </section>
+
+  <!-- Fin de partida -->
+  <section id="fin" class="pantalla">
+    <div class="titulo">
+      <h1 id="fin-titulo">¡PUM!</h1>
+      <p class="sub" id="fin-msg"></p>
+    </div>
+    <div class="resumen" id="fin-resumen"></div>
+    <div class="acciones">
+      <button id="btn-otra" class="btn">OTRA VEZ</button>
+    </div>
+  </section>
+
+  <!-- Pausa -->
+  <section id="pausa" class="pantalla">
+    <div class="titulo"><h1>PAUSA</h1></div>
+    <div class="acciones">
+      <button id="btn-seguir" class="btn">SEGUIR</button>
+      <button id="btn-calibrar-p" class="btn-chico">Recentrar timón</button>
+      <button id="btn-salir" class="btn-chico">Salir al inicio</button>
+    </div>
+  </section>
+
+  <!-- HUD -->
+  <div id="hud" class="oculto">
+    <div class="hud-sup">
+      <span id="hud-dist">Faltan 0 m</span>
+      <span class="hud-btns">
+        <button id="btn-cam" class="btn-hud" aria-label="Cambiar cámara" title="Cámara 1ª / 3ª persona (C)">🎥</button>
+        <button id="btn-pausa" class="btn-hud" aria-label="Pausa">❚❚</button>
+      </span>
+    </div>
+    <div id="mensajes">
+      <div id="grito"></div>
+      <div id="aviso"></div>
+      <div id="alerta">¡EN DOS RUEDAS!</div>
+    </div>
+    <div id="vidas" aria-label="Vidas"></div>
+
+    <div class="tablero">
+      <div class="vel"><span id="hud-vel">0</span><small>km/h</small></div>
+      <div class="barras">
+        <div class="barra"><label>Daño</label><i><b id="b-dano"></b></i></div>
+        <div class="barra"><label>Freno</label><i><b id="b-freno-vida"></b></i></div>
+      </div>
+    </div>
+
+    <div class="ctrl ctrl-izq">
+      <button id="b-izq" class="btn-ctrl">◀</button>
+      <button id="b-der" class="btn-ctrl">▶</button>
+      <button id="b-centrar" class="btn-ctrl chico oculto">⟲ centrar</button>
+    </div>
+    <div class="ctrl ctrl-der">
+      <div class="col">
+        <button id="b-freno" class="btn-ctrl freno">FRENO</button>
+        <div class="fila">
+          <button id="b-claxon" class="btn-ctrl chico" aria-label="Claxon">📯</button>
+          <button id="b-camara" class="btn-ctrl chico" aria-label="Cámara">🎥</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script type="module" src="js/main.js"></script>
+</body>
+</html>
