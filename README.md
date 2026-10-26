@@ -1,5 +1,32 @@
 # ¡Sin Frenos! — Torito en bajada
 
+## Estado para retomar — 25/10/2026
+
+**Versión actual: v1.0.0.** El código de esta sesión ya figura en el commit `ea52f10` (`version 10`). No se comprobó si ese commit está publicado en GitHub o GitHub Pages. Esta nota del README se agregó después de ese commit.
+
+Implementado:
+
+- Carrera con acelerador, freno completo, tres bots, posición y puesto final. Sin peatones, animales, desmontes ni obras. Puede superar 40 km/h; no hay un límite de 40. Doblar produce inclinación visual sin vuelco.
+- Controles de celular: zonas de dirección en ambas mitades, flechas grandes a media altura, freno en ambos lados, sin botón de claxon y centrado siempre accesible.
+- Vibración inicial Suave, respetando una selección guardada. En Carrera se redujeron un 10 % los máximos de vibración, conservando las vibraciones suaves.
+- Barrios diferenciados, escaleras y veredas variadas, muros pintados, grafitis, comercios, y texturas laterales y frontales para carros, combis y buses. Los originales generados se conservaron; los JPG que usa el juego y los prompts están en el repositorio.
+- Últimas correcciones solicitadas: quitar manchas crema del asfalto; corregir las coordenadas de textura de las reparaciones oscuras; retirar los edificios lejanos que parecían bloques blancos; restaurar la imagen de Lima sobre una esfera cerrada; cerrar los cantos exteriores de las veredas y agregar terreno de apoyo.
+- Para el timón pegado hacia la izquierda tras chocar: liberar punteros también fuera del botón, descartar lecturas antiguas del sensor y limpiar la dirección al perder una vida/reaparecer. No se cambia automáticamente la calibración del sensor al chocar; el jugador puede usar Centrar.
+
+Verificado: sintaxis JS, pruebas de `scripts/verificar-juego.mjs`, simulación de tres bots hasta la meta, construcción de geometrías completas con una copia local de Three.js 0.160.0, superficies frontales de los tres vehículos, cobertura del fondo en 648 direcciones y entrega de las siete texturas por HTTP. Los cambios finales todavía requieren revisión visual y de sensores en un celular real; no se midió su rendimiento en dispositivo.
+
+**Próximo paso:** probar v1.0.0 en celular, especialmente el timón después de chocar, huecos en veredas, fondo fotográfico, ajuste de grafitis/texturas y comportamiento de los tres rivales. El usuario había probado y aprobado el manejo más permisivo de Carrera antes de incorporar los bots. Prefiere probar en Firefox y sin descargar navegadores ni Playwright.
+
+Para retomar, ejecutar desde la raíz:
+
+```sh
+python -m http.server 8080 --bind 0.0.0.0
+```
+
+Abrir `http://localhost:8080`. En celular, usar la IP actual de la PC y el mismo Wi-Fi; durante esta sesión fue `http://192.168.100.80:8080`. El servidor local se apaga al cerrar esta sesión. Para los sensores en un teléfono remoto se necesita HTTPS; por HTTP en la red local se pueden probar los botones táctiles. Ejecutar `node scripts/verificar-juego.mjs` para repetir las pruebas sin dependencias. Al cambiar la versión, usar `node scripts/version.mjs X.Y.Z`.
+
+## Descripción
+
 Simulador 3D (Three.js) para móvil y PC: manejas un mototaxi (torito rojo) bajando un cerro de Lima. Empiezas en la trocha de tierra del cerro alto (chozas, pircas, Lima al fondo) y bajas a las calles con veredas variadas, miradores, baches, rompemuelles, obras, desmonte, tráfico, peatones, perros y gatos. En el modo original solo tienes un freno gastado que nunca detiene la moto; en Carrera controlas acelerador y freno completo. Si tomas una curva muy rápido el torito se levanta en dos ruedas y se vuelca. Tienes 3 vidas (corazones). Hay modo día y noche.
 
 ## Modos

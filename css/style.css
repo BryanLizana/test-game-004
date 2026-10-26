@@ -84,8 +84,6 @@ html, body {
   border-radius: 10px;
 }
 .version { font-size: 12px; opacity: 0.85; background: rgba(0, 0, 0, 0.5); padding: 2px 8px; border-radius: 6px; }
-.aviso-girar { display: none; font-weight: bold; background: #c8102e; padding: 4px 12px; border-radius: 8px; }
-@media (orientation: portrait) and (pointer: coarse) { .aviso-girar { display: block; } }
 
 .resumen {
   background: rgba(0, 0, 0, 0.5);
@@ -202,6 +200,7 @@ html, body {
 .barra { display: contents; }
 .barra i { display: block; height: 7px; background: rgba(255, 255, 255, 0.2); border-radius: 4px; overflow: hidden; }
 .barra b { display: block; height: 100%; width: 0; background: #3ecf5a; border-radius: 4px; }
+.barra i.gastando { outline: 2px solid #ffd200; box-shadow: 0 0 8px 2px rgba(255, 210, 0, 0.85); }
 
 .ctrl {
   position: absolute;
@@ -253,3 +252,14 @@ html, body {
 .btn-ctrl.acelerador.activo { background: #249a4e; }
 @media (pointer: fine) { .zona-giro, #hud > .flecha { display: none; } }
 @media (max-height: 430px) { .opciones { gap: 4px; } .btn-chico { padding: 5px 9px; font-size: 13px; } .acciones { gap: 6px; } }
+
+/* Celular en vertical (tipo TikTok): fila de pedales abajo, corazones y mensajes encima */
+@media (orientation: portrait) and (pointer: coarse) {
+  .btn-ctrl.freno { width: 94px; }
+  #b-centrar { font-size: 13px; padding: 0 9px; }
+  #vidas { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 72px); }
+  #mensajes { bottom: calc(max(10px, env(safe-area-inset-bottom)) + 124px); max-width: 70vw; }
+  .tablero { padding: 4px 10px; gap: 8px; }
+  .vel span { font-size: 30px; }
+  .barras { grid-template-columns: auto 70px; }
+}

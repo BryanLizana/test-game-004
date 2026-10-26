@@ -410,8 +410,8 @@ function marcoPuno(s, inicio, dirMundo) {
 }
 
 // detalle: "alto" (jugador, cabina completa) | "bajo" (tráfico, solo exterior, < 1500 triángulos).
-export function crearTorito({ color = 0xc8102e, conConductor = true, detalle = "alto" } = {}) {
-  if (detalle === "bajo") return crearToritoBajo(color, conConductor);
+export function crearTorito({ color = 0xc8102e, conConductor = true, detalle = "alto", techo = null } = {}) {
+  if (detalle === "bajo") return crearToritoBajo(color, conConductor, techo ?? color);
   const raiz = new THREE.Group();
   raiz.name = "torito";
   const carroceria = new THREE.Group();
@@ -743,7 +743,7 @@ export function crearTorito({ color = 0xc8102e, conConductor = true, detalle = "
 }
 
 // Torito de tráfico: exterior simplificado, ruedas simples, conductor simple, sin cabina.
-function crearToritoBajo(color, conConductor) {
+function crearToritoBajo(color, conConductor, colorTecho = color) {
   const raiz = new THREE.Group();
   raiz.name = "torito";
   const carroceria = new THREE.Group();
@@ -764,7 +764,9 @@ function crearToritoBajo(color, conConductor) {
   }
   pon(carroceria, malla(caja(1.22, 0.68, 0.08), mCuerpo), 0, 0.64, 1.28);
   pon(carroceria, malla(caja(1.2, 0.05, 0.012), mAmarillo(), false), 0, 0.9, 1.322);
-  pon(carroceria, malla(caja(1.24, 0.62, 0.04), mCuerpo), 0, 1.28, 1.3);
+  // Techo y pared trasera de la cabina pueden ir en otro color (combinaciones con blanco)
+  const mTecho = mPintura(colorTecho);
+  pon(carroceria, malla(caja(1.24, 0.62, 0.04), mTecho), 0, 1.28, 1.3);
   const mStop = new THREE.MeshStandardMaterial({ color: 0xd81020, emissive: 0xff1020, emissiveIntensity: 0.25, roughness: 0.4 });
   const luces = [-1, 1].map((s) => pon(carroceria, malla(caja(0.13, 0.11, 0.03), mStop, false), s * 0.48, 0.74, 1.325));
   // Carenado, panel negro, faro
@@ -789,7 +791,7 @@ function crearToritoBajo(color, conConductor) {
   // Techo
   const gTecho = geo("t_techo", () => perfilFrontal([[-0.645, 0], [0.645, 0], [0.645, 0.08], [0.58, 0.135], [0.32, 0.165],
     [-0.32, 0.165], [-0.58, 0.135], [-0.645, 0.08]], 2.32, 0.04, 2));
-  pon(carroceria, malla(gTecho, mCuerpo), 0, 1.585, 0.17);
+  pon(carroceria, malla(gTecho, mTecho), 0, 1.585, 0.17);
   // Asiento de pasajeros como bloque oscuro (se ve por los costados abiertos)
   pon(carroceria, malla(caja(1.1, 0.5, 0.5), mGrisOsc()), 0, 0.68, 0.9);
 

@@ -1,12 +1,12 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js?v=1.0.0";
-import { Vehiculo } from "./vehiculo.js?v=1.0.0";
-import { Trafico } from "./trafico.js?v=1.0.0";
-import { Controles } from "./controles.js?v=1.0.0";
-import { Sonido } from "./audio.js?v=1.0.0";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.0.0";
-import { crearLetreros } from "./ambiente.js?v=1.0.0";
+import { Pista, ANCHO } from "./pista.js?v=1.0.1";
+import { Vehiculo } from "./vehiculo.js?v=1.0.1";
+import { Trafico } from "./trafico.js?v=1.0.1";
+import { Controles } from "./controles.js?v=1.0.1";
+import { Sonido } from "./audio.js?v=1.0.1";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.0.1";
+import { crearLetreros } from "./ambiente.js?v=1.0.1";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -203,7 +203,7 @@ const mat = {
   frazada: est(0xffffff, { side: THREE.DoubleSide, alphaTest: 0.5 }),
   geoPrendas: atlas2x2(0.6, 0.75),     // ropa.png: polo, jean, manta, toalla
   geoFrazadas: atlas2x2(1.3, 1.2),     // frazadas.png: tigre, tigre blanco, rosas, leopardo
-  tierra: est(0x8a7458),
+  tierra: est(0x8a7458, { side: THREE.DoubleSide }),   // doble cara: la vereda de tierra izquierda queda invertida
   pirca: est(0x8d8172, { side: THREE.DoubleSide }),
   pircaLisa: est(0x8d8172, { side: THREE.DoubleSide }),
   cerro: est(0x9b8466, { side: THREE.DoubleSide }),
@@ -498,19 +498,32 @@ function colocarCamara(dt, instantaneo = false) {
     camara.position.y += Math.sin(tRuido * 31) * a + Math.sin(tRuido * 17.3) * a;
     eShake.set(Math.sin(tRuido * 23.1) * a * 0.8, Math.sin(tRuido * 13.7) * a * 0.5, Math.sin(tRuido * 19.9) * a * 0.6);
     camara.quaternion.multiply(qTmp.setFromEuler(eShake));
-    camara.fov = 74 + Math.min(18, v.v * 0.6);
+    camara.fov = fovSegunPantalla(74 + Math.min(18, v.v * 0.6));
   } else {
-    const destino = vTmp.copy(torito.position).addScaledVector(adelante, -6.3);
-    destino.y += 2.5;
+    // En vertical la cámara se aleja y sube para que el torito no tape la pantalla
+    const vertical = camara.aspect < 1;
+    const destino = vTmp.copy(torito.position).addScaledVector(adelante, vertical ? -9.2 : -6.3);
+    destino.y += vertical ? 3.4 : 2.5;
     if (instantaneo) camara.position.copy(destino);
     else camara.position.lerp(destino, 1 - Math.exp(-dt * 6));
     camara.position.y += Math.sin(tRuido * 27) * 0.02 * intensidad;
     const mira = vTmp.copy(torito.position).addScaledVector(adelante, 4);
     mira.y += 1.1;
     camara.lookAt(mira);
-    camara.fov = 66 + Math.min(16, v.v * 0.55);
+    camara.fov = fovSegunPantalla(66 + Math.min(16, v.v * 0.55));
   }
   if (camara.fov !== fovAnterior) camara.updateProjectionMatrix();
+}
+
+// El fov de Three es vertical: en pantallas angostas (celular vertical) se abre para
+// conservar el ángulo horizontal de una pantalla 16:10, con un tope para no deformar.
+function fovSegunPantalla(fovBase) {
+  const aspecto = camara.aspect;
+  if (aspecto >= 1.3) return fovBase;
+  const rad = Math.PI / 180;
+  const horizontal = 2 * Math.atan(Math.tan((fovBase * rad) / 2) * 1.6);
+  const vertical = (2 * Math.atan(Math.tan(horizontal / 2) / aspecto)) / rad;
+  return Math.max(fovBase, Math.min(vertical, 106));
 }
 
 function alternarCamara() {
@@ -560,9 +573,13 @@ function colocarTorito(dt) {
 }
 
 // ---------- HUD ----------
-let tHud = 0;
+let tHud = 0, frenoAnterior = 100;
 function actualizarHud(dt) {
   tHud -= dt;
+  // Borde amarillo en la barra del freno mientras se está gastando
+  const gastando = controles.freno && vehiculo.estado === "ok" && vehiculo.freno < frenoAnterior;
+  frenoAnterior = vehiculo.freno;
+  $("b-freno-vida").parentElement.classList.toggle("gastando", gastando);
   if (tAviso > 0 && (tAviso -= dt) <= 0) $("aviso").classList.remove("visible");
   if (tGrito > 0 && (tGrito -= dt) <= 0) $("grito").classList.remove("visible");
   $("alerta").classList.toggle("visible", modoJuego !== "carrera" && vehiculo.inclinacion > 0.15 && vehiculo.estado === "ok");
@@ -789,7 +806,6 @@ async function pantallaCompleta() {
   try {
     if (matchMedia("(pointer: coarse)").matches && document.documentElement.requestFullscreen && !document.fullscreenElement) {
       await document.documentElement.requestFullscreen({ navigationUI: "hide" });
-      if (screen.orientation && screen.orientation.lock) await screen.orientation.lock("landscape").catch(() => {});
     }
   } catch (_) { /* no soportado (iOS) */ }
 }

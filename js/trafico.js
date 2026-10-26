@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=1.0.0";
-import { LARGO_TORITO, ANCHO_TORITO } from "./vehiculo.js?v=1.0.0";
-import * as modelos from "./modelos.js?v=1.0.0";
+import { ANCHO, VEREDA } from "./pista.js?v=1.0.1";
+import { LARGO_TORITO, ANCHO_TORITO } from "./vehiculo.js?v=1.0.1";
+import * as modelos from "./modelos.js?v=1.0.1";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -14,7 +14,13 @@ const GRITOS = {
 };
 const elegir = (lista) => lista[(Math.random() * lista.length) | 0];
 
-const COLORES_TORITO = [0x1f4fbf, 0x2a9d4b, 0xffd200, 0xf28c28, 0x6a4c93];
+// Mototaxis de la zona: azul, verde o amarillo, solos o combinados con blanco [carrocería, techo]
+const BLANCO = 0xf2f2ee;
+const COLORES_TORITO = [
+  [0x1f4fbf, 0x1f4fbf], [0x2f6fd6, BLANCO], [BLANCO, 0x1f4fbf], [0x16388f, BLANCO],
+  [0x1f8a3c, 0x1f8a3c], [0x34a853, BLANCO], [BLANCO, 0x1f8a3c], [0x146b2e, BLANCO],
+  [0xf2c200, 0xf2c200], [0xffd84d, BLANCO], [BLANCO, 0xe0b000], [0xe0a800, BLANCO],
+];
 const MEDIDAS = {
   carro: { largo: 4.2, ancho: 1.7 },
   combi: { largo: 5.0, ancho: 1.9 },
@@ -60,7 +66,10 @@ export class Trafico {
       case "carro": return crearCarro();
       case "combi": return crearCarro({ tipo: "combi" });
       case "bus": return crearCarro({ tipo: "bus" });
-      case "torito": return crearTorito({ color: COLORES_TORITO[(Math.random() * COLORES_TORITO.length) | 0], detalle: "bajo" });
+      case "torito": {
+        const [color, techo] = COLORES_TORITO[(Math.random() * COLORES_TORITO.length) | 0];
+        return crearTorito({ color, techo, detalle: "bajo" });
+      }
       case "persona": return crearPersona({ tipo: extra.tipoPersona });
       case "perro": return crearPerro();
       case "obra": return modelos.crearObra ? modelos.crearObra({ variante: (Math.random() * 3) | 0 }) : cajaRespaldo(0xb5653d, 3, 2, 1.2);
