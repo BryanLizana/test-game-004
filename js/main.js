@@ -890,7 +890,7 @@ $("btn-otra").addEventListener("click", empezar);
 function mostrarModo() {
   const carrera = modoJuego === "carrera";
   $("btn-modo").textContent = `Modo: ${carrera ? "Carrera" : "Sin frenos"}`;
-  $("ayuda-controles").innerHTML = `${carrera ? "<b>Carrera:</b> la misma bajada sin frenos contra 3 rivales, con autos y gente que suben. Tienes 8 vidas.<br>" : ""}<b>Celular:</b> toca cada mitad para girar, o inclina el teléfono. Pedales abajo.<br><b>PC:</b> ← → / A D dirección · S / ↓ / Espacio freno gastado · H claxon · C cámara`;
+  $("ayuda-controles").innerHTML = `${carrera ? "<b>Carrera:</b> la misma bajada sin frenos contra 3 rivales, con autos y gente que suben. Tienes 8 vidas.<br>" : ""}<b>Celular:</b> toca cada mitad para girar; arrastra el dedo hacia abajo para frenar sin soltar el giro. El cuarto de abajo frena recto.<br><b>PC:</b> ← → / A D dirección · S / ↓ / Espacio freno gastado · H claxon · C cámara`;
 }
 $("btn-modo").addEventListener("click", () => {
   modoJuego = modoJuego === "carrera" ? "sinFrenos" : "carrera";
@@ -956,7 +956,10 @@ controles.alClaxon = (on) => {
 controles.alPausa = pausar;
 
 // Un conjunto por lado permite varios dedos sin soltar otra pulsación activa.
+// Arrastrar hacia abajo en una zona de giro frena sin dejar de girar, hasta levantar el dedo.
 const punterosGiro = { izq: new Set(), der: new Set() };
+const ARRASTRE_FRENO = 35;   // px hacia abajo, y más que hacia los lados
+const inicioToque = new Map();
 for (const lado of ["izq", "der"]) {
   const activos = punterosGiro[lado];
   const actualizar = () => {
@@ -966,7 +969,11 @@ for (const lado of ["izq", "der"]) {
   const soltarDireccion = () => { activos.clear(); actualizar(); };
   controles.soltadores.push(soltarDireccion);
   controles.soltadoresDireccion.push(soltarDireccion);
-  const soltarPuntero = (e) => { activos.delete(e.pointerId); actualizar(); };
+  const soltarPuntero = (e) => {
+    activos.delete(e.pointerId); actualizar();
+    inicioToque.delete(e.pointerId);
+    frenarArrastre(e.pointerId, false);
+  };
   addEventListener("pointerup", soltarPuntero);
   addEventListener("pointercancel", soltarPuntero);
   for (const id of ["zona-" + lado, "b-" + lado]) {
@@ -975,8 +982,15 @@ for (const lado of ["izq", "der"]) {
       if (estado !== "jugando") return;
       e.preventDefault();
       activos.add(e.pointerId);
+      inicioToque.set(e.pointerId, { x: e.clientX, y: e.clientY });
       el.setPointerCapture(e.pointerId);
       actualizar();
+    });
+    el.addEventListener("pointermove", (e) => {
+      const inicio = inicioToque.get(e.pointerId);
+      if (!inicio || estado !== "jugando") return;
+      const bajada = e.clientY - inicio.y;
+      if (bajada > ARRASTRE_FRENO && bajada > Math.abs(e.clientX - inicio.x)) frenarArrastre(e.pointerId, true);
     });
     for (const evento of ["pointerup", "pointercancel", "lostpointercapture"]) {
       el.addEventListener(evento, soltarPuntero);
@@ -990,6 +1004,13 @@ const pintarFrenos = () => {
   for (const id of ["b-freno", "b-freno-izq"]) $(id).classList.toggle("activo", frenosPresionados.size > 0);
 };
 controles.soltadores.push(() => { frenosPresionados.clear(); controles.botones.freno = false; pintarFrenos(); });
+function frenarArrastre(pointerId, on) {
+  const id = "arrastre-" + pointerId;
+  if (on === frenosPresionados.has(id)) return;
+  if (on) { frenosPresionados.add(id); vibrar(25); } else frenosPresionados.delete(id);
+  controles.botones.freno = frenosPresionados.size > 0;
+  pintarFrenos();
+}
 for (const id of ["b-freno", "b-freno-izq", "zona-freno"]) {
   controles.botonMantener($(id), () => {
     frenosPresionados.add(id); controles.botones.freno = true; pintarFrenos();

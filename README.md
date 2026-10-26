@@ -6,6 +6,8 @@
 
 ### Novedades de v1.3.0
 
+- **Frenar sin soltar el giro (celular):** arrastrar hacia abajo en una zona de giro, más de 35 px y más que hacia los lados (`ARRASTRE_FRENO` en `main.js`), frena y mantiene el giro de ese lado hasta levantar el dedo. Un toque quieto solo gira. El cuarto inferior sigue frenando recto. Al activarse vibra un poco y se iluminan los botones FRENO.
+
 - **Carrera = Sin frenos con rivales:** misma física que el modo original (sin aceleración automática, freno gastado, vuelco en curvas y el manubrio limitado por la velocidad). Se quitaron el agarre arcade y la aceleración de v1.2.0. Arranca a 4 m/s, igual que Sin frenos.
 - **Rivales con la misma bajada:** usan `aceleracionBajada` de `vehiculo.js` (la misma que el jugador) con un roce del motor un 4 % mayor, igual o un 4 % menor. Solo usan el freno gastado en curvas cerradas o cuando no pueden adelantar.
 - **Tráfico en Carrera:** autos, toritos, combis y buses que suben por el carril contrario (más seguido que en Sin frenos); gente que sube caminando por el borde de la calzada; personas que cruzan en las esquinas cuando se acerca el jugador o un rival. Sin animales, obras, desmonte ni autos estacionados.
@@ -83,7 +85,7 @@ Algunos muros llevan grafitis con textura, alternados con paredes de pintura gas
 | | Celular (horizontal) | PC |
 |---|---|---|
 | Dirección | tocar los 3/4 de arriba de la mitad izquierda/derecha | ← → / A D |
-| Freno gastado | tocar cualquier punto del cuarto de abajo de la pantalla (los botones FRENO lo indican) | S / ↓ / Espacio |
+| Freno gastado | en recta: tocar el cuarto de abajo de la pantalla (los botones FRENO lo indican). En curva: arrastrar hacia abajo (más de 35 px) el dedo que está girando; frena sin soltar el giro hasta levantar el dedo | S / ↓ / Espacio |
 | Claxon | — | H |
 | Cámara 1ª / 3ª persona | 🎥 | C |
 | Pausa | ❚❚ | P / Esc |

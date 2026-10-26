@@ -99,7 +99,7 @@ class Elemento {
   constructor() { this.eventos = {}; this.classList = { add() {}, remove() {}, toggle() {} }; }
   addEventListener(tipo, fn) { (this.eventos[tipo] ??= []).push(fn); }
   setPointerCapture() {}
-  emitir(tipo, pointerId) { for (const fn of this.eventos[tipo] || []) fn({ pointerId, preventDefault() {} }); }
+  emitir(tipo, pointerId, xy = {}) { for (const fn of this.eventos[tipo] || []) fn({ pointerId, clientX: 0, clientY: 0, ...xy, preventDefault() {} }); }
 }
 const Controles = clase("js/controles.js", "Controles", {
   navigator: { userAgent: "test", maxTouchPoints: 0 }, localStorage: { getItem: () => null },
@@ -111,7 +111,7 @@ const $ = (id) => { if (!elementos.has(id)) elementos.set(id, new Elemento()); r
 const main = leer("js/main.js");
 const bloque = main.slice(main.indexOf("const punterosGiro ="), main.indexOf("// Escena de fondo"));
 const eventosGlobales = new Map();
-vm.runInNewContext(bloque, { controles, $, estado: "jugando",
+vm.runInNewContext(bloque, { controles, $, estado: "jugando", vibrar() {},
   addEventListener(tipo, fn) { if (!eventosGlobales.has(tipo)) eventosGlobales.set(tipo, []); eventosGlobales.get(tipo).push(fn); },
 });
 $("zona-izq").emitir("pointerdown", 1);
@@ -147,6 +147,28 @@ controles.botones.freno = true;
 controles.centrarDireccion();
 assert.equal(controles.actualizar(0.1).giro, 0, "centrar elimina pulsaciones pendientes tras un choque");
 assert.equal(controles.botones.freno, true, "centrar no suelta el freno");
+controles.limpiar();
+// Arrastrar hacia abajo en una zona de giro frena y mantiene el giro; un toque quieto solo gira
+$("zona-izq").emitir("pointerdown", 11, { clientX: 100, clientY: 100 });
+$("zona-izq").emitir("pointermove", 11, { clientX: 110, clientY: 120 });
+assert.equal(controles.actualizar(0.2).freno, false, "un toque casi quieto no frena");
+$("zona-izq").emitir("pointermove", 11, { clientX: 160, clientY: 150 });
+assert.equal(controles.actualizar(0.1).freno, false, "un arrastre de costado no frena");
+$("zona-izq").emitir("pointermove", 11, { clientX: 105, clientY: 150 });
+const conArrastre = controles.actualizar(0.1);
+assert.ok(conArrastre.freno && conArrastre.giro < 0 && controles.botones.izq, "arrastrar abajo frena sin soltar el giro");
+$("zona-izq").emitir("pointermove", 11, { clientX: 105, clientY: 100 });
+assert.equal(controles.actualizar(0.1).freno, true, "el freno sigue hasta levantar el dedo");
+$("zona-freno").emitir("pointerdown", 12);
+$("zona-izq").emitir("pointerup", 11);
+assert.equal(controles.actualizar(0.1).freno, true, "levantar el arrastre no suelta la franja de abajo");
+$("zona-freno").emitir("pointerup", 12);
+assert.equal(controles.actualizar(0.1).freno, false);
+$("zona-der").emitir("pointerdown", 13, { clientX: 500, clientY: 50 });
+$("zona-der").emitir("pointermove", 13, { clientX: 490, clientY: 100 });
+assert.ok(controles.actualizar(0.1).freno && controles.botones.der, "también a la derecha");
+for (const fn of eventosGlobales.get("pointerup")) fn({ pointerId: 13 });
+assert.equal(controles.actualizar(0.1).freno, false, "soltar fuera de la zona suelta el freno del arrastre");
 controles.limpiar();
 
 const modeloSimple = () => ({
@@ -197,4 +219,4 @@ const traficoOriginal = new Trafico(escenaSimple, circuito);
 assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "persona"));
 assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "desmonte"));
 console.log("OK: tres bots completan la carrera sin frenos; suben autos y personas; los rivales se retrasan al chocar; sin desmontes en Carrera; liberación global y centrado del timón.");
-console.log(`OK: Carrera con la física de Sin frenos, freno gastado, modo original, multitouch y ${muestras} muestras de veredas; geometrías de 4 pistas sin valores inválidos.`);
+console.log(`OK: Carrera con la física de Sin frenos, freno gastado, freno arrastrando en las zonas de giro, modo original, multitouch y ${muestras} muestras de veredas; geometrías de 4 pistas sin valores inválidos.`);
