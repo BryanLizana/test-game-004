@@ -83,6 +83,7 @@ html, body {
   padding: 6px 12px;
   border-radius: 10px;
 }
+.version { font-size: 12px; opacity: 0.85; background: rgba(0, 0, 0, 0.5); padding: 2px 8px; border-radius: 6px; }
 .aviso-girar { display: none; font-weight: bold; background: #c8102e; padding: 4px 12px; border-radius: 8px; }
 @media (orientation: portrait) and (pointer: coarse) { .aviso-girar { display: block; } }
 

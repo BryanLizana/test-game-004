@@ -1,11 +1,11 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js";
-import { Vehiculo } from "./vehiculo.js";
-import { Trafico } from "./trafico.js";
-import { Controles } from "./controles.js";
-import { Sonido } from "./audio.js";
-import { crearTorito } from "./modelos.js";
+import { Pista, ANCHO } from "./pista.js?v=0.5.0";
+import { Vehiculo } from "./vehiculo.js?v=0.5.0";
+import { Trafico } from "./trafico.js?v=0.5.0";
+import { Controles } from "./controles.js?v=0.5.0";
+import { Sonido } from "./audio.js?v=0.5.0";
+import { crearTorito } from "./modelos.js?v=0.5.0";
 
 const $ = (id) => document.getElementById(id);
 const PASO_FISICA = 1 / 120;
@@ -740,6 +740,7 @@ controles.botonMantener($("b-centrar"), () => { controles.calibrar(); aviso("Tim
 // Escena de fondo detrás del menú mientras se juega la primera vez
 nuevaPartida();
 aplicarHora();
+$("version-pausa").textContent = $("version").textContent;
 $("btn-jugar").disabled = false;
 $("btn-jugar").textContent = "JUGAR";
 requestAnimationFrame(bucle);
