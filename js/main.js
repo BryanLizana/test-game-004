@@ -1,13 +1,13 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js?v=1.2.1";
-import { GestorTramos } from "./tramos.js?v=1.2.1";
-import { Vehiculo } from "./vehiculo.js?v=1.2.1";
-import { Trafico } from "./trafico.js?v=1.2.1";
-import { Controles } from "./controles.js?v=1.2.1";
-import { Sonido } from "./audio.js?v=1.2.1";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.2.1";
-import { crearLetreros } from "./ambiente.js?v=1.2.1";
+import { Pista, ANCHO } from "./pista.js?v=1.3.0";
+import { GestorTramos } from "./tramos.js?v=1.3.0";
+import { Vehiculo } from "./vehiculo.js?v=1.3.0";
+import { Trafico } from "./trafico.js?v=1.3.0";
+import { Controles } from "./controles.js?v=1.3.0";
+import { Sonido } from "./audio.js?v=1.3.0";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.3.0";
+import { crearLetreros } from "./ambiente.js?v=1.3.0";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -472,12 +472,12 @@ function nuevaPartida() {
   pista = new Pista(semilla);
   tramos = new GestorTramos(pista, escena, mat, semilla);
   pista.construirFinal(escena);
-  vehiculo = new Vehiculo(pista, modoJuego);
+  vehiculo = new Vehiculo(pista);
   tramos.precargar(vehiculo.s);
   trafico = new Trafico(escena, pista, modoJuego);
   tiempoPartida = 0;
   acumulador = 0;
-  vidas = VIDAS;
+  vidas = maxVidas();
   tInvulnerable = 0;
   caidaFinal = false;
   $("vidas").classList.remove("invulnerable");
@@ -486,7 +486,7 @@ function nuevaPartida() {
   controles.centrarDireccion();
   colocarTorito(0);
   colocarCamara(0, true);
-  aviso(modoJuego === "carrera" ? "¡Carrera contra 3 rivales! El torito acelera solo: frena en las curvas" : "¡Se cortó el cable del freno!", 2.5);
+  aviso(modoJuego === "carrera" ? "¡Carrera sin frenos contra 3 rivales!" : "¡Se cortó el cable del freno!", 2.5);
 }
 
 // ---------- Gritos del chofer (solo globo de texto) ----------
@@ -644,7 +644,7 @@ function actualizarHud(dt) {
   $("b-freno-vida").parentElement.classList.toggle("gastando", gastando);
   if (tAviso > 0 && (tAviso -= dt) <= 0) $("aviso").classList.remove("visible");
   if (tGrito > 0 && (tGrito -= dt) <= 0) $("grito").classList.remove("visible");
-  $("alerta").classList.toggle("visible", modoJuego !== "carrera" && vehiculo.inclinacion > 0.15 && vehiculo.estado === "ok");
+  $("alerta").classList.toggle("visible", vehiculo.inclinacion > 0.15 && vehiculo.estado === "ok");
   if (tHud > 0) return;
   tHud = 0.1;
   const v = vehiculo;
@@ -684,6 +684,7 @@ function bucle(ahora) {
     vehiculo.invulnerable = tInvulnerable > 0;
     const choque = trafico.actualizar(dt, vehiculo);
     if (trafico.gritos.length) { gritar(trafico.gritos[trafico.gritos.length - 1]); trafico.gritos.length = 0; }
+    if (trafico.noticias.length) { aviso(trafico.noticias[trafico.noticias.length - 1], 1.2); trafico.noticias.length = 0; }
     if (choque && vehiculo.estado === "ok") procesarChoque(choque);
     procesarEventos();
     tramos.actualizar(vehiculo.s);
@@ -709,8 +710,9 @@ function bucle(ahora) {
 }
 
 // ---------- Vidas (corazones pixel-art) ----------
-const VIDAS = 3;
-let vidas = VIDAS, tInvulnerable = 0, caidaFinal = false;
+// En Carrera hay más tráfico y gente: 8 corazones en vez de 3
+const maxVidas = () => (modoJuego === "carrera" ? 8 : 3);
+let vidas = maxVidas(), tInvulnerable = 0, caidaFinal = false;
 const CORAZON = [
   ".KKK.KKK.",
   "KRRRKRRRK",
@@ -730,7 +732,7 @@ function svgCorazon(lleno) {
   return `<svg viewBox="0 0 9 8" shape-rendering="crispEdges" class="${lleno ? "" : "vacio"}">${rects}</svg>`;
 }
 function dibujarVidas(perdida = -1) {
-  $("vidas").innerHTML = Array.from({ length: VIDAS }, (_, i) => svgCorazon(i < vidas)).join("");
+  $("vidas").innerHTML = Array.from({ length: maxVidas() }, (_, i) => svgCorazon(i < vidas)).join("");
   if (perdida >= 0) $("vidas").children[perdida].classList.add("perdido");
 }
 
@@ -750,7 +752,7 @@ function revivir() {
   if (estado !== "jugando") return;
   controles.centrarDireccion();
   const v = vehiculo;
-  Object.assign(v, { estado: "ok", motivo: "", psi: 0, d: ANCHO / 4, v: modoJuego === "carrera" ? 0 : 4, h: 0, vy: 0, inclinacion: 0, balanceo: 0, giro: 0 });
+  Object.assign(v, { estado: "ok", motivo: "", psi: 0, d: ANCHO / 4, v: 4, h: 0, vy: 0, inclinacion: 0, balanceo: 0, giro: 0 });
   v.dano = Math.min(v.dano, 60);
   v.suelo = pista.alturaLateral(v.d, v.s);
   v.acelLat = v.sacudida = v.ladoVuelco = 0;
@@ -773,7 +775,7 @@ function procesarChoque({ agente, vRel }) {
     vibrar(Math.round(30 + fuerza * 50));
     return;
   }
-  if (agente.peaton) {
+  if (agente.peaton || agente.caminante) {
     if (agente.tipo === "persona") {
       agente.modelo.visible = false;   // salió volando del susto: se va de la escena
       return vehiculo.chocar("¡Atropellaste a alguien!", eventos);
@@ -888,7 +890,7 @@ $("btn-otra").addEventListener("click", empezar);
 function mostrarModo() {
   const carrera = modoJuego === "carrera";
   $("btn-modo").textContent = `Modo: ${carrera ? "Carrera" : "Sin frenos"}`;
-  $("ayuda-controles").innerHTML = `${carrera ? "<b>Carrera:</b> compite contra 3 rivales; el torito acelera solo y puedes chocarlos.<br>" : ""}<b>Celular:</b> toca cada mitad para girar, o inclina el teléfono. Pedales abajo.<br><b>PC:</b> ← → / A D dirección · ${carrera ? "S / ↓ / Espacio frenar" : "S / ↓ / Espacio freno gastado"} · H claxon · C cámara`;
+  $("ayuda-controles").innerHTML = `${carrera ? "<b>Carrera:</b> la misma bajada sin frenos contra 3 rivales, con autos y gente que suben. Tienes 8 vidas.<br>" : ""}<b>Celular:</b> toca cada mitad para girar, o inclina el teléfono. Pedales abajo.<br><b>PC:</b> ← → / A D dirección · S / ↓ / Espacio freno gastado · H claxon · C cámara`;
 }
 $("btn-modo").addEventListener("click", () => {
   modoJuego = modoJuego === "carrera" ? "sinFrenos" : "carrera";

@@ -2,7 +2,17 @@
 
 ## Estado para retomar — 26/10/2026
 
-**Versión actual: v1.2.1**, publicada en GitHub (`main`). Falta probarla en un celular real.
+**Versión actual: v1.3.0**, publicada en GitHub (`main`). Falta probarla en un celular real.
+
+### Novedades de v1.3.0
+
+- **Carrera = Sin frenos con rivales:** misma física que el modo original (sin aceleración automática, freno gastado, vuelco en curvas y el manubrio limitado por la velocidad). Se quitaron el agarre arcade y la aceleración de v1.2.0. Arranca a 4 m/s, igual que Sin frenos.
+- **Rivales con la misma bajada:** usan `aceleracionBajada` de `vehiculo.js` (la misma que el jugador) con un roce del motor un 4 % mayor, igual o un 4 % menor. Solo usan el freno gastado en curvas cerradas o cuando no pueden adelantar.
+- **Tráfico en Carrera:** autos, toritos, combis y buses que suben por el carril contrario (más seguido que en Sin frenos); gente que sube caminando por el borde de la calzada; personas que cruzan en las esquinas cuando se acerca el jugador o un rival. Sin animales, obras, desmonte ni autos estacionados.
+- **Los rivales chocan y se retrasan:** con un auto quedan 3 s parados y el auto 3 s detenido; con una persona, 2 s. Mientras esperan se corren al otro carril. Si pasa cerca aparece el aviso «¡Rival N chocó!».
+- **8 corazones en Carrera** (3 en Sin frenos).
+
+Verificado: `node scripts/verificar-juego.mjs` (velocidad final igual a la del jugador, autos y personas que suben, retraso tras chocar) y una simulación en 5 pistas reales: con un jugador que no frena, los rivales llegan entre 2 y 10 s después (≈150–175 s). Falta probarlo en el navegador.
 
 ### Novedades de v1.2.1
 
@@ -55,11 +65,11 @@ Abrir `http://localhost:8080`. En celular, usar la IP actual de la PC y el mismo
 
 ## Descripción
 
-Simulador 3D (Three.js) para móvil y PC: manejas un mototaxi (torito rojo) bajando un cerro de Lima. Empiezas en la trocha de tierra del cerro alto (chozas, pircas, Lima al fondo) y bajas a las calles con veredas variadas, miradores, baches, rompemuelles, obras, desmonte, tráfico, peatones, perros y gatos. En el modo original solo tienes un freno gastado que nunca detiene la moto; en Carrera el torito acelera solo y controlas el freno completo. Si tomas una curva muy rápido el torito se levanta en dos ruedas y se vuelca. Tienes 3 vidas (corazones). Hay modo día y noche.
+Simulador 3D (Three.js) para móvil y PC: manejas un mototaxi (torito rojo) bajando un cerro de Lima. Empiezas en la trocha de tierra del cerro alto (chozas, pircas, Lima al fondo) y bajas a las calles con veredas variadas, miradores, baches, rompemuelles, obras, desmonte, tráfico, peatones, perros y gatos. En los dos modos solo tienes un freno gastado que nunca detiene la moto. Si tomas una curva muy rápido el torito se levanta en dos ruedas y se vuelca. Tienes 3 vidas (corazones) en Sin frenos y 8 en Carrera. Hay modo día y noche.
 
 ## Modos
 
-En el inicio puedes elegir **Sin frenos** (bajada original con freno gastado) o **Carrera**: compite contra tres toritos rivales, sin peatones, animales, desmontes ni obras. Arranca detenido y acelera solo; usa el freno completo para controlar la bajada hasta la meta. Carrera supera los 40 km/h y tiene agarre arcade: la moto acompaña parte de la curva y, sin timón, se alinea con la calle (`ASISTE_CURVA` y `AGARRE_CARRERA` en `vehiculo.js`). La inclinación es visual y limitada. Puedes chocar a los rivales: se empujan de costado o por detrás y se reparten la velocidad. Los baches y saltos siguen presentes. Los rivales siguen la pista y adelantan con lógica local sencilla; no usan servicios externos. El HUD muestra posición y tiempo, y la llegada indica el puesto final. El modo elegido se guarda en el dispositivo.
+En el inicio puedes elegir **Sin frenos** (bajada original con freno gastado) o **Carrera**: la misma bajada sin frenos, con la misma física y velocidad, contra tres toritos rivales. Suben autos, toritos, combis y buses por el carril contrario, sube gente caminando por el borde y cruzan personas en las esquinas; no hay animales, obras, desmonte ni autos estacionados. Tienes 8 vidas. Los rivales bajan con la misma física que el jugador (`aceleracionBajada` en `vehiculo.js`), frenan con el freno gastado en curvas cerradas y adelantan con lógica local sencilla. Si chocan con un auto o una persona se quedan parados unos segundos. Puedes chocar a los rivales: se empujan de costado o por detrás y se reparten la velocidad, sin perder vida. El HUD muestra posición y tiempo, y la llegada indica el puesto final. El modo elegido se guarda en el dispositivo.
 
 Las veredas recuperan las escaleras características de los cerros de Lima, con peldaños, descansos y tramos de distintas longitudes. Se alternan con concreto inclinado, entradas rebajadas y tierra sin terminar. Cada lado de la calle tiene una distribución diferente.
 
@@ -73,7 +83,7 @@ Algunos muros llevan grafitis con textura, alternados con paredes de pintura gas
 | | Celular (horizontal) | PC |
 |---|---|---|
 | Dirección | tocar los 3/4 de arriba de la mitad izquierda/derecha | ← → / A D |
-| Freno (completo en Carrera; gastado en Sin frenos) | tocar cualquier punto del cuarto de abajo de la pantalla (los botones FRENO lo indican) | S / ↓ / Espacio |
+| Freno gastado | tocar cualquier punto del cuarto de abajo de la pantalla (los botones FRENO lo indican) | S / ↓ / Espacio |
 | Claxon | — | H |
 | Cámara 1ª / 3ª persona | 🎥 | C |
 | Pausa | ❚❚ | P / Esc |

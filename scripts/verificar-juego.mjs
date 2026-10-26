@@ -20,55 +20,20 @@ function avanzar(v, segundos, e) {
   assert.equal(v.estado, "ok");
   assert.ok(Number.isFinite(v.v) && Number.isFinite(v.s));
 }
-const carrera = new Vehiculo(pistaLisa(), "carrera");
-assert.equal(carrera.v, 0);
-avanzar(carrera, 3, entrada(true));
-assert.equal(carrera.v, 0, "con el freno apretado no arranca");
-avanzar(carrera, 5, entrada());
-assert.ok(carrera.kmh > 40, "Carrera acelera sola y supera los 40 km/h en plano");
-avanzar(carrera, 5, entrada(true));
-assert.equal(carrera.v, 0, "el freno corta la aceleración automática");
-assert.equal(carrera.freno, 100);
-for (const pendiente of [0.1, 0.2, 0.3]) {
-  const v = new Vehiculo(pistaLisa(pendiente), "carrera");
-  v.v = 25;
-  avanzar(v, 8, entrada(true));
-  assert.equal(v.v, 0, "debe parar en pendiente");
-  avanzar(v, 2, entrada(true));
-  assert.equal(v.v, 0, "debe permanecer frenado en pendiente");
-}
 const original = new Vehiculo(pistaLisa(0.2));
 avanzar(original, 8, entrada());
 avanzar(original, 8, entrada(true));
 assert.ok(original.v > 0 && original.freno < 100);
+// Carrera usa la misma bajada sin frenos: los rivales llegan a la misma velocidad final que el jugador.
+const aceleracionBajada = clase("js/vehiculo.js", "aceleracionBajada", { ANCHO: 7 });
+for (const pendiente of [0.1, 0.2]) {
+  const jugadorLibre = new Vehiculo(pistaLisa(pendiente));
+  avanzar(jugadorLibre, 60, entrada());
+  let vRival = 4;
+  for (let i = 0; i < 60 * 120; i++) vRival += aceleracionBajada(vRival, pendiente) / 120;
+  assert.ok(Math.abs(jugadorLibre.v - vRival) < 0.05, `misma velocidad final (${jugadorLibre.v.toFixed(2)} vs ${vRival.toFixed(2)})`);
+}
 
-// Curvas cerradas de radio 9 m, a ambos lados y a velocidades de carrera.
-// El agarre de Carrera sigue el 80 % de la curva: el timón solo pone el resto.
-for (const kmh of [45, 60, 80]) for (const lado of [-1, 1]) for (const tierra of [false, true]) {
-  const pista = pistaLisa();
-  const k = lado / 9;
-  pista.muestra = (_s, out) => Object.assign(out, { g: 0, k });
-  pista.enTierra = () => tierra;
-  const v = new Vehiculo(pista, "carrera");
-  v.v = kmh / 3.6;
-  const angulo = Math.atan(1.95 * k * 0.2 / (1 - v.d * k));
-  v.giro = angulo;
-  const dInicial = v.d;
-  avanzar(v, 4, { giro: angulo / Math.atan(1.95 / 6.5), freno: false });
-  assert.ok(v.kmh > 40);
-  assert.ok(Math.abs(v.d - dInicial) < 0.01, "debe seguir la curva sin frenar ni salirse");
-  assert.ok(v.inclinacion < 1 && Math.abs(v.balanceo) <= 0.32, "inclinación visual limitada");
-  assert.equal(v.h, 0, "doblar no debe lanzar la moto al aire");
-}
-// Sin tocar el timón, el agarre mantiene el torito en la calle en una curva abierta (radio 40 m).
-for (const lado of [-1, 1]) {
-  const pista = { ...pistaLisa(), muestra: (_s, out) => Object.assign(out, { g: 0, k: lado / 40 }) };
-  const v = new Vehiculo(pista, "carrera");
-  v.v = 60 / 3.6;
-  const dInicial = v.d;
-  for (let i = 0; i < 3 * 120; i++) v.paso(1 / 120, { giro: 0, freno: false }, []);
-  assert.ok(Math.abs(v.d - dInicial) < 1.6, `el agarre debe sostener la curva sin timón (desvío ${(v.d - dInicial).toFixed(2)} m)`);
-}
 const vuelcoOriginal = new Vehiculo({ ...pistaLisa(), limiteLateral: () => 10000 });
 vuelcoOriginal.v = 15;
 for (let i = 0; i < 600 && vuelcoOriginal.estado === "ok"; i++) {
@@ -191,7 +156,7 @@ const modelosSimple = Object.fromEntries(["crearCarro", "crearTorito", "crearPer
 modelosSimple.animarCaminar = modelosSimple.liberarRecursos = () => {};
 const azarFijo = Object.create(Math); azarFijo.random = () => 0.6;
 const reservaSimple = { tomar: (_clave, crear) => crear(), devolver() {} };
-const Trafico = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, modelos: modelosSimple, reserva: reservaSimple, Math: azarFijo });
+const Trafico = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, ROCE_MOTOR: 0.06, aceleracionBajada, modelos: modelosSimple, reserva: reservaSimple, Math: azarFijo });
 const circuito = {
   largo: 1000, finTierra: 200, cruces: [300, 500, 700],
   muestra: (_s, out = {}) => Object.assign(out, { g: 0.15, k: 0.06, th: 0 }),
@@ -200,19 +165,36 @@ const circuito = {
 };
 const escenaSimple = { add() {}, remove() {} };
 const carreraBots = new Trafico(escenaSimple, circuito, "carrera");
-assert.equal(carreraBots.agentes.length, 3);
-assert.ok(carreraBots.agentes.every((a) => a.rival && !a.peaton && !a.estatico));
+const rivalesDe = (t) => t.agentes.filter((a) => a.rival);
+assert.equal(rivalesDe(carreraBots).length, 3);
+assert.ok(carreraBots.agentes.every((a) => a.rival || (a.peaton && a.tipo === "persona")), "en Carrera solo cruzan personas");
+assert.ok(!carreraBots.agentes.some((a) => a.estatico || a.estacionado), "sin obras, desmonte ni estacionados");
 const jugador = { s: 8, d: 1.75, v: 18, h: 0, estado: "ok", invulnerable: true };
+let subieron = 0, caminantes = 0;
 for (let i = 0; i < 10000; i++) {
   jugador.s = Math.min(940, jugador.s + jugador.v / 60);
   carreraBots.actualizar(1 / 60, jugador);
-  assert.equal(carreraBots.agentes.length, 3, "los rivales no desaparecen de la clasificación");
-  assert.ok(carreraBots.agentes.every((a) => Number.isFinite(a.s) && Number.isFinite(a.d) && a.v >= 0 && Math.abs(a.d) <= 1.65));
+  subieron = Math.max(subieron, carreraBots.agentes.filter((a) => !a.rival && a.v <= -5).length);
+  caminantes = Math.max(caminantes, carreraBots.agentes.filter((a) => a.caminante).length);
+  assert.equal(rivalesDe(carreraBots).length, 3, "los rivales no desaparecen de la clasificación");
+  assert.ok(rivalesDe(carreraBots).every((a) => Number.isFinite(a.s) && Number.isFinite(a.d) && a.v >= 0 && Math.abs(a.d) <= 1.65));
 }
-assert.ok(carreraBots.agentes.every((a) => a.termino && a.tiempoLlegada > 0));
+assert.ok(subieron > 0 && caminantes > 0, "en Carrera suben autos y personas");
+assert.ok(rivalesDe(carreraBots).every((a) => a.termino && a.tiempoLlegada > 0));
 assert.ok(carreraBots.puesto(jugador) >= 1 && carreraBots.puesto(jugador) <= 4);
+// Un rival que choca con un auto se queda parado y pierde tiempo
+const choqueBots = new Trafico(escenaSimple, { ...circuito, cruces: [] }, "carrera");
+const [rival] = rivalesDe(choqueBots);
+const auto = choqueBots.agregar("carro", rival.s + 3, rival.d, -6, { sentido: -1 });
+const lejos = { s: -500, d: 0, v: 0, h: 0, estado: "ok", invulnerable: true };
+choqueBots.tSubida = choqueBots.tLento = 1e9;
+choqueBots.actualizar(1 / 60, lejos);
+assert.ok(rival.tRetraso > 0 && auto.v === 0, "el rival choca y el auto queda parado");
+const sRetraso = rival.s;
+for (let i = 0; i < 60; i++) choqueBots.actualizar(1 / 60, lejos);
+assert.ok(rival.s - sRetraso < 1, "durante el retraso el rival no avanza");
 const traficoOriginal = new Trafico(escenaSimple, circuito);
 assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "persona"));
 assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "desmonte"));
-console.log("OK: tres bots completan la carrera; sin peatones/desmontes en Carrera; liberación global y centrado del timón.");
-console.log(`OK: Carrera, frenos en pendiente, modo original, multitouch y ${muestras} muestras de veredas; geometrías de 4 pistas sin valores inválidos.`);
+console.log("OK: tres bots completan la carrera sin frenos; suben autos y personas; los rivales se retrasan al chocar; sin desmontes en Carrera; liberación global y centrado del timón.");
+console.log(`OK: Carrera con la física de Sin frenos, freno gastado, modo original, multitouch y ${muestras} muestras de veredas; geometrías de 4 pistas sin valores inválidos.`);
