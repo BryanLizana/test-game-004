@@ -2,9 +2,26 @@
 
 ## Estado para retomar — 25/10/2026
 
-**Versión actual: v1.0.0.** El código de esta sesión ya figura en el commit `ea52f10` (`version 10`). No se comprobó si ese commit está publicado en GitHub o GitHub Pages. Esta nota del README se agregó después de ese commit.
+**Versión actual: v1.1.0**, commit `496cdae`, publicada en GitHub (`main`). Falta probarla en un celular real.
 
-Implementado:
+### Novedades de v1.0.1 y v1.1.0
+
+- **Carga por tramos:** `pista.js` describe cada bloque de 60 m solo con datos (arreglos de números y claves de material). `tramos.js` mantiene armados unos 100 m atrás y 420 m adelante, y libera el resto. JUGAR arranca en unos 40 ms.
+- **Web Worker** (`obrero-pista.js`): calcula los bloques de adelante con la misma semilla que el hilo principal. Si un bloque está a menos de 70 m y no llegó, o si no hay soporte de workers, se calcula en el hilo principal. `js/three.js` hace de puente porque los workers no usan el importmap.
+- **Reciclaje** (`reciclaje.js`): reserva compartida por clave (`torito|i`, `persona|tipo`, `choza|v`…) para el tráfico, las chozas y los contenedores de mallas.
+- **Shaders precompilados al cargar.** La calidad automática ya no apaga las sombras (eso recompilaba todo y congelaba unos 7 s): solo achica el mapa de sombra y lo actualiza cuadro por medio.
+- **Celular en vertical u horizontal**, sin bloqueo de orientación. En vertical: botones chicos, resaltado solo en la flecha, primera persona con el mundo grande y el manubrio a escala (valores en el objeto `VERTICAL` de `main.js`), y tercera persona más alejada.
+- Veredas de tierra izquierdas sin huecos (material de tierra a doble cara). Barra de freno con borde amarillo mientras se gasta. Toritos del tráfico azules, verdes o amarillos, solos o con blanco.
+
+Verificado: `node scripts/verificar-juego.mjs`, la sintaxis de todos los JS y una sonda de rayos en Firefox (0 huecos en veredas). En Firefox también se comprobó la carga por tramos sin errores, 50 FPS tras saltar 300 m, la ausencia del congelamiento de 7 s y los modos vertical y horizontal simulados.
+
+**Próximo paso:** probar v1.1.0 en un celular real (primera persona vertical, botones, tirones al avanzar, timón tras chocar). Pendiente como idea: alargar la vía o agregar una zona nueva; la carga por tramos ya lo permite sin costo por cuadro. Límite conocido en vertical: los puños quedan fuera de cuadro y el techo ocupa cerca de un 20% en subidas.
+
+**Preferencias del usuario:**
+- Probar en Firefox, nunca en Chrome, y sin descargar navegadores ni Playwright. Para pruebas automáticas se usa Firefox con `--remote-debugging-port` y WebDriver BiDi desde Node.
+- El código lo escribe Claude; el plugin de imágenes solo genera texturas e ilustraciones.
+
+### Implementado en v1.0.0
 
 - Carrera con acelerador, freno completo, tres bots, posición y puesto final. Sin peatones, animales, desmontes ni obras. Puede superar 40 km/h; no hay un límite de 40. Doblar produce inclinación visual sin vuelco.
 - Controles de celular: zonas de dirección en ambas mitades, flechas grandes a media altura, freno en ambos lados, sin botón de claxon y centrado siempre accesible.
@@ -14,8 +31,6 @@ Implementado:
 - Para el timón pegado hacia la izquierda tras chocar: liberar punteros también fuera del botón, descartar lecturas antiguas del sensor y limpiar la dirección al perder una vida/reaparecer. No se cambia automáticamente la calibración del sensor al chocar; el jugador puede usar Centrar.
 
 Verificado: sintaxis JS, pruebas de `scripts/verificar-juego.mjs`, simulación de tres bots hasta la meta, construcción de geometrías completas con una copia local de Three.js 0.160.0, superficies frontales de los tres vehículos, cobertura del fondo en 648 direcciones y entrega de las siete texturas por HTTP. Los cambios finales todavía requieren revisión visual y de sensores en un celular real; no se midió su rendimiento en dispositivo.
-
-**Próximo paso:** probar v1.0.0 en celular, especialmente el timón después de chocar, huecos en veredas, fondo fotográfico, ajuste de grafitis/texturas y comportamiento de los tres rivales. El usuario había probado y aprobado el manejo más permisivo de Carrera antes de incorporar los bots. Prefiere probar en Firefox y sin descargar navegadores ni Playwright.
 
 Para retomar, ejecutar desde la raíz:
 
@@ -59,9 +74,12 @@ El botón **centrar** permanece accesible en celular. Los choques que consumen u
 
 ## Estructura
 - `js/main.js`: render, cámaras, HUD y flujo de juego
-- `js/pista.js`: generación procedural de la calle (tramos, escaleras, casas, baches)
+- `js/pista.js`: generación procedural de la calle (trazado, escaleras, casas, baches); cada bloque se describe como datos
+- `js/tramos.js`: carga por tramos (arma y libera bloques, monta los datos como mallas)
+- `js/obrero-pista.js`: Web Worker que calcula los bloques; `js/three.js`: puente a Three.js por URL
+- `js/reciclaje.js`: reserva de modelos reutilizables
 - `js/ambiente.js`: letreros pintados de los negocios
-- `js/vehiculo.js`: física (pendiente, cambios, vuelco, saltos, choques)
+- `js/vehiculo.js`: física (pendiente, freno, vuelco, saltos, choques)
 - `js/trafico.js`: vehículos, peatones y perros
 - `js/modelos.js`: modelos 3D procedurales (`pruebas/modelos.html` para verlos)
 - `js/controles.js` y `js/audio.js`: entrada y sonido sintetizado
