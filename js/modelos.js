@@ -26,7 +26,8 @@ function mat(clave, crear) {
 
 // Asigna la textura `nombre` (una por archivo) al material cuando termina de cargar.
 // Si falla, el material queda con su color liso. `colorConMapa` reemplaza el color al cargar.
-function usarTextura(material, nombre, colorConMapa) {
+// `aplicar` permite poner la textura en otra ranura (p. ej. la máscara de pintura).
+function usarTextura(material, nombre, colorConMapa, aplicar = aplicarMapa) {
   if (!_cargador) return material;
   let e = _texs.get(nombre);
   if (!e) {
@@ -36,19 +37,19 @@ function usarTextura(material, nombre, colorConMapa) {
     const url = new URL(`../assets/tex/${archivo}`, import.meta.url).href;
     e.tex = _cargador.load(url, (t) => {
       t.colorSpace = THREE.SRGBColorSpace;
-      t.wrapS = t.wrapT = nombre.includes("-lima-v1") ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
+      t.wrapS = t.wrapT = nombre.includes("-lima-v") ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
       t.anisotropy = 4;
       t.needsUpdate = true;
       e.estado = 1;
-      for (const [m, c] of e.pendientes) aplicarMapa(m, t, c);
+      for (const [m, c, fn] of e.pendientes) fn(m, t, c);
       e.pendientes.length = 0;
     }, undefined, () => { e.estado = -1; e.pendientes.length = 0; });
     e.tex.colorSpace = THREE.SRGBColorSpace;
     _compartidos.add(e.tex);
-    e.tex.wrapS = e.tex.wrapT = nombre.includes("-lima-v1") ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
+    e.tex.wrapS = e.tex.wrapT = nombre.includes("-lima-v") ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
   }
-  if (e.estado === 1) aplicarMapa(material, e.tex, colorConMapa);
-  else if (e.estado === 0) e.pendientes.push([material, colorConMapa]);
+  if (e.estado === 1) aplicar(material, e.tex, colorConMapa);
+  else if (e.estado === 0) e.pendientes.push([material, colorConMapa, aplicar]);
   return material;
 }
 function aplicarMapa(m, t, c) {
@@ -68,6 +69,28 @@ function mTex(nombre, colorSin, colorCon = 0xffffff, rough = 0.85, { metal = 0, 
       name: nombre, color: colorSin, roughness: rough, metalness: metal, flatShading: flat,
       side: doble ? THREE.DoubleSide : THREE.FrontSide,
     }), nombre, colorCon));
+}
+// Foto del frente/atrás del sedán: solo la pintura (blanco en `<nombre>-mascara.png`) toma el
+// color del auto; faros, luces, placa y parachoques quedan como en la foto.
+function mFotoPintada(nombre, color, rough) {
+  return mat(`foto|${nombre}|${color}`, () => {
+    const m = new THREE.MeshStandardMaterial({ name: nombre, color, roughness: rough });
+    const u = { tintePintura: { value: new THREE.Color(color) }, mascaraPintura: { value: null } };
+    m.onBeforeCompile = (sh) => {
+      Object.assign(sh.uniforms, u);
+      sh.fragmentShader = sh.fragmentShader
+        .replace("#include <common>", `#include <common>
+uniform vec3 tintePintura;
+uniform sampler2D mascaraPintura;`)
+        .replace("#include <map_fragment>", `#include <map_fragment>
+#ifdef USE_MAP
+  diffuseColor.rgb *= mix(vec3(1.0), tintePintura, texture2D(mascaraPintura, vMapUv).r);
+#endif`);
+    };
+    m.customProgramCacheKey = () => "fotoPintada";
+    usarTextura(m, `${nombre}-mascara.png`, null, (mm, t) => { u.mascaraPintura.value = t; });
+    return usarTextura(m, nombre, 0xffffff);
+  });
 }
 // Pintura gastada multiplicada por el color del vehículo (cacheada por color).
 const mPintura = (color, doble = false) => mTex("pintura", color, color, 0.55, { flat: true, doble });
@@ -905,7 +928,7 @@ const SPEC_SEDAN = {
   parabrisas: [[-1.0, 0.95], [-0.2, 1.42], 1.3],
   luneta: [[0.75, 1.43], [1.35, 0.95], 1.3],
   centroCabina: [0.3, 1.1],
-  zFrente: -2.13, zAtras: 2.13, yFaros: 0.74, yStops: 0.8, yParachoque: 0.42,
+  zFrente: -2.13, zAtras: 2.13,
   franjas: [],
 };
 const SPEC_COMBI = {
@@ -925,7 +948,7 @@ const SPEC_COMBI = {
   parabrisas: [[-2.35, 1.35], [-1.75, 2.2], 1.55],
   luneta: null,
   centroCabina: [0, 1.4],
-  zFrente: -2.53, zAtras: 2.52, yFaros: 0.85, yStops: 0.95, yParachoque: 0.46,
+  zFrente: -2.53, zAtras: 2.52,
   franjas: [[1.02, 1.18], [0.92, 0.96]],
 };
 
@@ -941,7 +964,7 @@ const SPEC_BUS = {
   anchoVentanas: 2.112,
   parabrisas: [[-3.51, 1.55], [-3.5, 2.65], 1.85],
   luneta: null, centroCabina: [0, 1.7],
-  zFrente: -3.5, zAtras: 3.5, yFaros: 0.92, yStops: 1.0, yParachoque: 0.5,
+  zFrente: -3.5, zAtras: 3.5,
   franjas: [],
 };
 
@@ -956,7 +979,9 @@ function geometriaCarro(S, superficie) {
   for (let i = 0; i < pos.count; i += 3) {
     const esLateral = Math.abs(normal.getX(i)) > 0.9;
     const esFrente = !esLateral && normal.getZ(i) < -0.65;
-    if (superficie === "lateral" ? !esLateral : superficie === "frente" ? !esFrente : esLateral || esFrente) continue;
+    const esAtras = !esLateral && normal.getZ(i) > 0.65;
+    const elegida = esLateral ? "lateral" : esFrente ? "frente" : esAtras ? "atras" : "base";
+    if (elegida !== superficie) continue;
     for (let j = i; j < i + 3; j++) {
       posiciones.push(pos.getX(j), pos.getY(j), pos.getZ(j));
       normales.push(normal.getX(j), normal.getY(j), normal.getZ(j));
@@ -967,6 +992,10 @@ function geometriaCarro(S, superficie) {
       } else if (superficie === "frente") {
         const altoFrente = S === SPEC_SEDAN ? 0.97 : S === SPEC_BUS ? 1.55 : 1.35;
         uvs.push(0.5 - pos.getX(j) / S.ancho, (pos.getY(j) - 0.3) / (altoFrente - 0.3));
+      } else if (superficie === "atras") {
+        // Visto desde atrás la derecha es +X; arriba llega hasta la luna trasera
+        const altoAtras = S === SPEC_SEDAN ? 0.92 : S === SPEC_BUS ? 1.8 : 1.4;
+        uvs.push(0.5 + pos.getX(j) / S.ancho, (pos.getY(j) - 0.3) / (altoAtras - 0.3));
       } else uvs.push(uvOriginal.getX(j), uvOriginal.getY(j));
     }
   }
@@ -1010,9 +1039,14 @@ export function crearCarro({ color, tipo = "sedan" } = {}) {
   const nombreTextura = esBus ? "bus-lima-v1" : esCombi ? "combi-lima-v1" : "carro-lima-v1";
   const mLateral = mTex(nombreTextura, color, esBus || esCombi ? 0xffffff : color, 0.7);
   carroceria.add(malla(geo(`${k}_laterales`, () => geometriaCarro(S, "lateral")), mLateral));
-  const texturaFrente = esBus ? "bus-frente-lima-v1" : esCombi ? "combi-frente-lima-v1" : "carro-frente-lima-v1";
-  const mFrente = mTex(texturaFrente, color, esBus || esCombi ? 0xffffff : color, 0.65);
+  // Frente y parte trasera fotográficos: faros, parrilla, placa y parachoques vienen en la imagen
+  const nombreTipo = esBus ? "bus" : esCombi ? "combi" : "carro";
+  const foto = (lado) => esBus || esCombi ? mTex(`${nombreTipo}-${lado}-lima-v2`, color, 0xffffff, 0.6)
+    : mFotoPintada(`${nombreTipo}-${lado}-lima-v2`, color, 0.6);
+  const mFrente = foto("frente");
   carroceria.add(malla(geo(`${k}_frente`, () => geometriaCarro(S, "frente")), mFrente));
+  const mAtras = foto("atras");
+  carroceria.add(malla(geo(`${k}_atras`, () => geometriaCarro(S, "atras")), mAtras));
   if (S.cabina) {
     carroceria.add(malla(geo(`${k}_cabina`, () => perfilLateral(S.cabina.puntos, S.cabina.ancho, 0.05, 1)), mCuerpo));
   }
@@ -1031,23 +1065,6 @@ export function crearCarro({ color, tipo = "sedan" } = {}) {
     pon(carroceria, malla(caja(1.0, 0.14, 0.02), mStd(0xf6f1d8, 0.6), false), 0, 2.08, -1.86, -Math.atan2(0.85, 0.6) + Math.PI / 2);
   }
 
-  const mFaroC = mat("faroCarro", () => new THREE.MeshStandardMaterial({ color: 0xfff8e6, emissive: 0xfff0c8, emissiveIntensity: 0.2, roughness: 0.2, metalness: 0.2 }));
-  const mStopC = mat("stopCarro", () => new THREE.MeshStandardMaterial({ color: 0xc81020, emissive: 0xff1020, emissiveIntensity: 0.25, roughness: 0.3 }));
-  const mAmbar = mat("ambarCarro", () => new THREE.MeshStandardMaterial({ color: 0xff8a00, emissive: 0xff6a00, emissiveIntensity: 0.15, roughness: 0.4 }));
-  const xL = S.ancho / 2 - 0.22;
-  for (const s of [-1, 1]) {
-    pon(carroceria, malla(cajaR(0.3, 0.13, 0.05, 0.012), mCromo(), false), s * xL, S.yFaros, S.zFrente + 0.016);
-    pon(carroceria, malla(cajaR(0.26, 0.1, 0.03, 0.01), mFaroC, false), s * xL, S.yFaros, S.zFrente - 0.005);
-    pon(carroceria, malla(cajaR(0.08, 0.06, 0.03, 0.008), mAmbar, false), s * (xL + 0.2), S.yFaros - 0.08, S.zFrente + 0.02);
-    pon(carroceria, malla(cajaR(0.22, 0.14, 0.05, 0.012), mStopC, false), s * (xL + 0.04), S.yStops, S.zAtras - 0.005);
-  }
-  const gPara = cajaR(S.ancho + 0.04, 0.16, 0.14, 0.04);
-  pon(carroceria, malla(gPara, mGrisOsc()), 0, S.yParachoque, S.zFrente + 0.02);
-  pon(carroceria, malla(gPara, mGrisOsc()), 0, S.yParachoque, S.zAtras - 0.02);
-  pon(carroceria, malla(caja(0.62, 0.11, 0.02), mNegro(), false), 0, S.yFaros - 0.02, S.zFrente + 0.005);
-  // Placas lisas (sin texto)
-  pon(carroceria, malla(caja(0.34, 0.12, 0.01), mStd(0xf4f4ee, 0.5), false), 0, S.yParachoque, S.zFrente - 0.055);
-  pon(carroceria, malla(caja(0.34, 0.12, 0.01), mStd(0xf2d64b, 0.5), false), 0, S.yParachoque + 0.17, S.zAtras + 0.01);
   // Espejos laterales con luna
   const yEsp = esBus ? 1.9 : esCombi ? 1.45 : 1.02, zEsp = esBus ? -3.25 : esCombi ? -2.05 : -0.85;
   for (const s of [-1, 1]) {

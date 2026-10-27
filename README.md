@@ -2,7 +2,14 @@
 
 ## Estado para retomar — 26/10/2026
 
-**Versión actual: v1.3.0**, publicada en GitHub (`main`). Falta probarla en un celular real.
+**Versión actual: v1.3.1**, publicada en GitHub (`main`). Falta probarla en un celular real.
+
+### Novedades de v1.3.1
+
+- **Frente y parte trasera fotográficos** para sedán, combi y bus (`*-frente-lima-v2.jpg` y `*-atras-lima-v2.jpg`, generados con Codex; prompts en `scripts/texturas-vehiculos.json`). Faros, stops, parrilla, placas y parachoques vienen en la imagen; se quitaron las cajitas que los imitaban.
+- En el sedán solo la pintura toma el color del auto, según la máscara `carro-*-lima-v2-mascara.png` (`mFotoPintada` en `modelos.js`); luces y placa quedan como en la foto.
+- **Tercera persona más alta** (3,6 m) y mirando 16 m adelante, a la altura real de la pista: el torito queda abajo y se ve la calle para esquivar.
+- Pendiente: de noche los faros y stops de los autos ya no brillan; los toritos aún no tienen texturas fotográficas.
 
 ### Novedades de v1.3.0
 

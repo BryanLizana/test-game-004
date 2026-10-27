@@ -1,13 +1,13 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js?v=1.3.0";
-import { GestorTramos } from "./tramos.js?v=1.3.0";
-import { Vehiculo } from "./vehiculo.js?v=1.3.0";
-import { Trafico } from "./trafico.js?v=1.3.0";
-import { Controles } from "./controles.js?v=1.3.0";
-import { Sonido } from "./audio.js?v=1.3.0";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.3.0";
-import { crearLetreros } from "./ambiente.js?v=1.3.0";
+import { Pista, ANCHO } from "./pista.js?v=1.3.1";
+import { GestorTramos } from "./tramos.js?v=1.3.1";
+import { Vehiculo } from "./vehiculo.js?v=1.3.1";
+import { Trafico } from "./trafico.js?v=1.3.1";
+import { Controles } from "./controles.js?v=1.3.1";
+import { Sonido } from "./audio.js?v=1.3.1";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.3.1";
+import { crearLetreros } from "./ambiente.js?v=1.3.1";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -562,14 +562,17 @@ function colocarCamara(dt, instantaneo = false) {
     const fovNormal = fovSegunPantalla(74 + Math.min(18, v.v * 0.6));
     camara.fov = kv > 0 ? fovNormal + (VERTICAL.fov1 + Math.min(10, v.v * 0.3) - fovNormal) * kv : fovNormal;
   } else {
-    // En vertical la cámara se aleja y sube un poco más para encuadrar el torito
-    const destino = vTmp.copy(torito.position).addScaledVector(adelante, -6.3 - VERTICAL.atras3 * kv);
-    destino.y += 2.5 + VERTICAL.sube3 * kv;
+    // Cámara alta que mira lejos: el torito queda abajo del cuadro y se ve la calle de adelante.
+    // En vertical se aleja y sube un poco más para encuadrar el torito.
+    const destino = vTmp.copy(torito.position).addScaledVector(adelante, -6.8 - VERTICAL.atras3 * kv);
+    destino.y += 3.6 + VERTICAL.sube3 * kv;
     if (instantaneo) camara.position.copy(destino);
     else camara.position.lerp(destino, 1 - Math.exp(-dt * 6));
     camara.position.y += Math.sin(tRuido * 27) * 0.02 * intensidad;
-    const mira = vTmp.copy(torito.position).addScaledVector(adelante, 4);
-    mira.y += 1.1;
+    // Punto de mira 16 m adelante, a la altura real de la pista allí (en bajada queda más abajo)
+    const yAdelante = pista.muestra(v.s + 16, muestraCamara).y;
+    const mira = vTmp.copy(torito.position).addScaledVector(adelante, 16);
+    mira.y = Math.min(torito.position.y, yAdelante) + 0.9;
     camara.lookAt(mira);
     const fovNormal = fovSegunPantalla(66 + Math.min(16, v.v * 0.55));
     camara.fov = kv > 0 ? fovNormal + (VERTICAL.fov3 + Math.min(12, v.v * 0.4) - fovNormal) * kv : fovNormal;
