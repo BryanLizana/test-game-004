@@ -70,21 +70,25 @@ function mTex(nombre, colorSin, colorCon = 0xffffff, rough = 0.85, { metal = 0, 
       side: doble ? THREE.DoubleSide : THREE.FrontSide,
     }), nombre, colorCon));
 }
-// Foto del frente/atrás del sedán: solo la pintura (blanco en `<nombre>-mascara.png`) toma el
-// color del auto; faros, luces, placa y parachoques quedan como en la foto.
-function mFotoPintada(nombre, color, rough) {
-  return mat(`foto|${nombre}|${color}`, () => {
+// Foto del frente/atrás: solo la pintura (rojo en `<nombre>-mascara.png`) toma el color del
+// vehículo; faros, luces, placa y parachoques quedan como en la foto. El verde de la máscara
+// toma `color2` (la cabina de los toritos de dos tonos).
+function mFotoPintada(nombre, color, rough, color2 = 0xffffff) {
+  return mat(`foto|${nombre}|${color}|${color2}`, () => {
     const m = new THREE.MeshStandardMaterial({ name: nombre, color, roughness: rough });
-    const u = { tintePintura: { value: new THREE.Color(color) }, mascaraPintura: { value: null } };
+    const u = { tintePintura: { value: new THREE.Color(color) }, tintePintura2: { value: new THREE.Color(color2) },
+      mascaraPintura: { value: null } };
     m.onBeforeCompile = (sh) => {
       Object.assign(sh.uniforms, u);
       sh.fragmentShader = sh.fragmentShader
         .replace("#include <common>", `#include <common>
 uniform vec3 tintePintura;
+uniform vec3 tintePintura2;
 uniform sampler2D mascaraPintura;`)
         .replace("#include <map_fragment>", `#include <map_fragment>
 #ifdef USE_MAP
-  diffuseColor.rgb *= mix(vec3(1.0), tintePintura, texture2D(mascaraPintura, vMapUv).r);
+  vec4 mascara = texture2D(mascaraPintura, vMapUv);
+  diffuseColor.rgb *= mix(vec3(1.0), tintePintura, mascara.r) * mix(vec3(1.0), tintePintura2, mascara.g);
 #endif`);
     };
     m.customProgramCacheKey = () => "fotoPintada";
@@ -432,6 +436,42 @@ function marcoPuno(s, inicio, dirMundo) {
   return { o, atras: s }; // en el marco: "hacia el conductor" = s * X local
 }
 
+// Fotos del frente y la parte trasera del torito, comunes a los dos niveles de detalle.
+// Frente: trapecio sobre la cara del carenado (local de `nariz`); u cubre el ancho máximo 1.26.
+function frenteFotoTorito(nariz, color) {
+  const g = geo("t_frenteFoto", () => {
+    const s = new THREE.Shape();
+    s.moveTo(-0.36, 0); s.lineTo(0.36, 0); s.lineTo(0.61, 0.49); s.lineTo(-0.61, 0.49); s.lineTo(-0.36, 0);
+    const g = new THREE.ShapeGeometry(s);
+    const pos = g.getAttribute("position"), uv = g.getAttribute("uv");
+    for (let i = 0; i < pos.count; i++) uv.setXY(i, (pos.getX(i) + 0.63) / 1.26, pos.getY(i) / 0.49);
+    return g.rotateY(Math.PI);
+  });
+  pon(nariz, malla(g, mFotoPintada("torito-frente-lima-v1", color, 0.55), false), 0, 0, -0.004);
+}
+// Lente del faro con el vidrio de la foto del frente (círculo de ~85 px en 1024×400, centro u 0.5, v 0.61).
+// Material propio por torito: main.js cambia su emisivo de noche.
+let _texLente = null;
+function mLenteFaro() {
+  const m = new THREE.MeshStandardMaterial({ color: 0xfff8e0, emissive: 0xfff2c0, emissiveIntensity: 0.15, roughness: 0.25 });
+  return usarTextura(m, "torito-frente-lima-v1", 0xffffff, (mm, t) => {
+    if (!_texLente) {
+      _texLente = t.clone();
+      _texLente.repeat.set(0.166, 0.425);
+      _texLente.offset.set(0.5 - 0.083, 0.61 - 0.2125);
+      _compartidos.add(_texLente);
+    }
+    mm.map = _texLente;
+    mm.color.set(0xffffff);
+    mm.needsUpdate = true;
+  });
+}
+// Atrás: de la base (y 0.30) al techo (y 1.60); el verde de la máscara es la pared de la cabina.
+function atrasFotoTorito(carroceria, color, colorCabina) {
+  const g = geo("t_atrasFoto", () => new THREE.PlaneGeometry(1.24, 1.3));
+  pon(carroceria, malla(g, mFotoPintada("torito-atras-lima-v1", color, 0.6, colorCabina), false), 0, 0.95, 1.333);
+}
+
 // detalle: "alto" (jugador, cabina completa) | "bajo" (tráfico, solo exterior, < 1500 triángulos).
 export function crearTorito({ color = 0xc8102e, conConductor = true, detalle = "alto", techo = null } = {}) {
   if (detalle === "bajo") return crearToritoBajo(color, conConductor, techo ?? color);
@@ -472,20 +512,14 @@ export function crearTorito({ color = 0xc8102e, conConductor = true, detalle = "
     pon(carroceria, malla(caja(0.012, 0.05, 0.86), mAmarillo(), false), s * 0.652, 0.9, 0.89);
     pon(carroceria, malla(geo("t_pegatina", () => new THREE.PlaneGeometry(0.3, 0.3)), mPegatina, false), s * 0.652, 0.62, 1.12, 0, s * Math.PI / 2, 0);
   }
-  // Panel trasero, franja y luces
+  // Panel trasero; franja, luces, placa y ventanita vienen en la foto
   pon(carroceria, malla(cajaR(1.22, 0.68, 0.08, 0.02), mCuerpo), 0, 0.64, 1.28);
-  pon(carroceria, malla(caja(1.2, 0.05, 0.012), mAmarillo(), false), 0, 0.9, 1.322);
-  const mStop = new THREE.MeshStandardMaterial({ color: 0xd81020, emissive: 0xff1020, emissiveIntensity: 0.25, roughness: 0.4 });
+  atrasFotoTorito(carroceria, color, color);
   const luces = [];
-  for (const s of [-1, 1]) {
-    luces.push(pon(carroceria, malla(cajaR(0.13, 0.11, 0.03, 0.008), mStop, false), s * 0.48, 0.74, 1.325));
-  }
-  pon(carroceria, malla(caja(0.28, 0.14, 0.01), mStd(0xf4f4f0, 0.6), false), 0, 0.5, 1.325); // placa
   carroceria.add(segmento(v3(0.32, 0.27, 0.95), v3(0.35, 0.3, 1.36), 0.03, mGrisOsc(), 6, false)); // escape
   // Pared trasera de lona con ventanita
   pon(carroceria, malla(cajaR(1.24, 0.62, 0.04, 0.01), mCuerpo), 0, 1.28, 1.3);
   pon(carroceria, malla(caja(1.18, 0.56, 0.005), mLona, false), 0, 1.28, 1.277);
-  pon(carroceria, malla(caja(0.6, 0.22, 0.01), mVidrioOscuro(), false), 0, 1.32, 1.323);
 
   // --- Carenado frontal: cuña con frente negro, faro abultado ---
   const gNariz = geo("t_nariz3", () => {
@@ -497,20 +531,15 @@ export function crearTorito({ color = 0xc8102e, conConductor = true, detalle = "
   });
   carroceria.add(malla(gNariz, mCuerpo));
   const nariz = pon(carroceria, new THREE.Group(), 0, 0.48, -1.03, NARIZ_TILT); // z local 0 = cara frontal
-  const gPanelNegro = geo("t_panelnegro2", () =>
-    perfilFrontal([[-0.17, 0.02], [0.17, 0.02], [0.27, 0.45], [-0.27, 0.45]], 0.03, 0.008));
-  pon(nariz, malla(gPanelNegro, mNeg), 0, 0, -0.012);
-  pon(nariz, malla(caja(1.14, 0.04, 0.012), mAmarillo(), false), 0, 0.47, -0.008);
+  frenteFotoTorito(nariz, color);   // panel negro, franja y direccionales vienen en la foto
   const gCasco = geo("t_cascofaro", () => new THREE.CylinderGeometry(0.125, 0.105, 0.08, 14, 1, true).rotateX(Math.PI / 2));
   pon(nariz, malla(gCasco, mNeg), 0, 0.3, -0.06);
   const aroFaro = geo("t_arofaro", () => new THREE.CylinderGeometry(0.104, 0.104, 0.02, 14).rotateX(Math.PI / 2));
   pon(nariz, malla(aroFaro, mCromo(), false), 0, 0.3, -0.1);
   const lente = geo("t_lente", () => new THREE.CylinderGeometry(0.086, 0.086, 0.02, 14).rotateX(Math.PI / 2));
-  const mFaro = new THREE.MeshStandardMaterial({ color: 0xfff8e0, emissive: 0xfff2c0, emissiveIntensity: 0.15, roughness: 0.25 });
+  const mFaro = mLenteFaro();
   const faro = pon(nariz, malla(lente, mFaro, false), 0, 0.3, -0.108);
   faro.name = "faro";
-  const mNaranja = mat("direccional", () => new THREE.MeshStandardMaterial({ color: 0xff8a00, emissive: 0xff6a00, emissiveIntensity: 0.2, roughness: 0.4 }));
-  for (const s of [-1, 1]) pon(nariz, malla(cajaR(0.1, 0.065, 0.03, 0.008), mNaranja, false), s * 0.4, 0.4, -0.012);
   // Tanque / cubierta roja abombada al pie de la dirección (se ve abajo al centro)
   const gTanque = geo("t_tanque", () => new THREE.SphereGeometry(0.17, 14, 6, 0, Math.PI * 2, 0, Math.PI / 2).scale(1, 0.55, 1.15));
   pon(carroceria, malla(gTanque, mCuerpo), 0, 0.7, -0.84);
@@ -793,11 +822,10 @@ function crearToritoBajo(color, conConductor, colorTecho = color) {
     espejoPequeno(carroceria, s, false);
   }
   pon(carroceria, malla(caja(1.22, 0.68, 0.08), mCuerpo), 0, 0.64, 1.28);
-  pon(carroceria, malla(caja(1.2, 0.05, 0.012), mAmarillo(), false), 0, 0.9, 1.322);
-  // Pared trasera de la cabina en el color del techo
+  // Pared trasera de la cabina en el color del techo; la foto lleva franja, luces y placa
   pon(carroceria, malla(caja(1.24, 0.62, 0.04), mTecho), 0, 1.28, 1.3);
-  const mStop = new THREE.MeshStandardMaterial({ color: 0xd81020, emissive: 0xff1020, emissiveIntensity: 0.25, roughness: 0.4 });
-  const luces = [-1, 1].map((s) => pon(carroceria, malla(caja(0.13, 0.11, 0.03), mStop, false), s * 0.48, 0.74, 1.325));
+  atrasFotoTorito(carroceria, color, colorTecho);
+  const luces = [];
   // Carenado, panel negro, faro
   const gNariz = geo("t_nariz3", () => {
     const g = perfilLateral(NARIZ, 1.26, 0.03, 2);
@@ -808,9 +836,8 @@ function crearToritoBajo(color, conConductor, colorTecho = color) {
   });
   carroceria.add(malla(gNariz, mCuerpo));
   const nariz = pon(carroceria, new THREE.Group(), 0, 0.48, -1.03, NARIZ_TILT);
-  pon(nariz, malla(caja(0.48, 0.43, 0.03), mNeg), 0, 0.235, -0.012);
-  pon(nariz, malla(caja(1.14, 0.04, 0.012), mAmarillo(), false), 0, 0.47, -0.008);
-  const mFaro = new THREE.MeshStandardMaterial({ color: 0xfff8e0, emissive: 0xfff2c0, emissiveIntensity: 0.15, roughness: 0.25 });
+  frenteFotoTorito(nariz, color);
+  const mFaro = mLenteFaro();
   const faro = pon(nariz, malla(geo("t_lenteB", () => new THREE.CylinderGeometry(0.09, 0.1, 0.06, 10).rotateX(Math.PI / 2)), mFaro, false), 0, 0.3, -0.05);
   faro.name = "faro";
   // Marco del parabrisas simplificado y vidrio

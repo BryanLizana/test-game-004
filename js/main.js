@@ -1,13 +1,13 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js?v=1.3.1";
-import { GestorTramos } from "./tramos.js?v=1.3.1";
-import { Vehiculo } from "./vehiculo.js?v=1.3.1";
-import { Trafico } from "./trafico.js?v=1.3.1";
-import { Controles } from "./controles.js?v=1.3.1";
-import { Sonido } from "./audio.js?v=1.3.1";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.3.1";
-import { crearLetreros } from "./ambiente.js?v=1.3.1";
+import { Pista, ANCHO } from "./pista.js?v=1.3.2";
+import { GestorTramos } from "./tramos.js?v=1.3.2";
+import { Vehiculo } from "./vehiculo.js?v=1.3.2";
+import { Trafico } from "./trafico.js?v=1.3.2";
+import { Controles } from "./controles.js?v=1.3.2";
+import { Sonido } from "./audio.js?v=1.3.2";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.3.2";
+import { crearLetreros } from "./ambiente.js?v=1.3.2";
 
 const elementos = new Map();
 const $ = (id) => {
