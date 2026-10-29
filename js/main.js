@@ -1,13 +1,13 @@
 import * as THREE from "three";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js?v=1.3.2";
-import { GestorTramos } from "./tramos.js?v=1.3.2";
-import { Vehiculo } from "./vehiculo.js?v=1.3.2";
-import { Trafico } from "./trafico.js?v=1.3.2";
-import { Controles } from "./controles.js?v=1.3.2";
-import { Sonido } from "./audio.js?v=1.3.2";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.3.2";
-import { crearLetreros } from "./ambiente.js?v=1.3.2";
+import { Pista, ANCHO } from "./pista.js?v=1.4.0";
+import { GestorTramos } from "./tramos.js?v=1.4.0";
+import { Vehiculo } from "./vehiculo.js?v=1.4.0";
+import { Trafico } from "./trafico.js?v=1.4.0";
+import { Controles } from "./controles.js?v=1.4.0";
+import { Sonido } from "./audio.js?v=1.4.0";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.4.0";
+import { crearLetreros } from "./ambiente.js?v=1.4.0";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -221,6 +221,19 @@ const mat = {
   cilindro: est(0x1f5fbf, { roughness: 0.5 }),
   geoPoste: new THREE.CylinderGeometry(0.11, 0.16, 8, 6),
   cable: new THREE.LineBasicMaterial({ color: 0x1d1d1d }),
+  // Jardines y parques del barrio
+  pasto: est(0x8f9a6a, { side: THREE.DoubleSide }),
+  reja: est(0xffffff, { side: THREE.DoubleSide, alphaTest: 0.5, transparent: false }),
+  follaje: est(0xffffff, { flatShading: true }),
+  geoArbusto: new THREE.IcosahedronGeometry(0.42, 0).scale(1, 0.75, 1),
+  geoCopa: new THREE.IcosahedronGeometry(1.25, 1).scale(1, 0.8, 1),
+  geoTronco: new THREE.CylinderGeometry(0.1, 0.15, 2.4, 6).translate(0, 1.2, 0),
+  geoBanca: mergeGeometries([
+    new THREE.BoxGeometry(1.6, 0.06, 0.42),
+    new THREE.BoxGeometry(1.6, 0.32, 0.06).translate(0, 0.2, -0.2),
+    new THREE.BoxGeometry(0.08, 0.42, 0.4).translate(-0.7, -0.22, 0),
+    new THREE.BoxGeometry(0.08, 0.42, 0.4).translate(0.7, -0.22, 0),
+  ]),
   rompemuelle: est(0xffffff, { map: texRayas }),
   geoRompemuelle: new THREE.BoxGeometry(ANCHO, 0.12, 0.7),
 };
@@ -245,6 +258,9 @@ textura(mat.ropa, "assets/tex/ropa.png", false);
 textura(mat.frazada, "assets/tex/frazadas.png", false);
 textura(mat.cilindro, "assets/tex/bidon.jpg");
 textura(mat.cerro, "assets/tex/cerro.jpg");
+textura(mat.pasto, "assets/tex/pasto.jpg");
+mat.reja.color.set(0x2f4a3a);   // reja verde oscura mientras carga
+textura(mat.reja, "assets/tex/reja.png");
 mat.fachadas.forEach((m, i) => textura(m, `assets/tex/fachada${(i % 4) + 1}.jpg`));
 mat.fachadas.forEach(ensuciar);
 ensuciar(mat.muroLateral);
@@ -271,7 +287,7 @@ for (let i = 0; i < uvCielo.count; i++) uvCielo.setY(i, Math.pow(uvCielo.getY(i)
 const cielo = new THREE.Mesh(geoCielo, cieloMat);
 cielo.renderOrder = -1;
 escena.add(cielo);
-textura(cieloMat, "assets/tex/cielo.jpg", false);
+textura(cieloMat, "assets/tex/cielo-v2.jpg", false, "assets/tex/cielo.jpg");   // 360° sin costura
 
 // ---------- Torito del jugador ----------
 const torito = crearTorito({ color: 0xc8102e, conConductor: true });

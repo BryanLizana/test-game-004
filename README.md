@@ -2,7 +2,13 @@
 
 ## Estado para retomar — 27/10/2026
 
-**Versión actual: v1.3.2** (sin publicar). Falta probarla en un celular real.
+**Versión actual: v1.4.0** (sin publicar). Falta probarla en un celular real.
+
+### Novedades de v1.4.0
+
+- **Cielo 360° sin costura** (`cielo-v2.jpg`, generado con Codex; `cielo.jpg` queda de respaldo): ya no se ve el corte entre el mar y los cerros al girar.
+- **Cerro continuo:** la ladera ya no se arma por casa (dejaba pedazos sueltos y huecos). Ahora es una sola franja a cada lado de la pista, hasta 150 m, desde la pirca, la baranda del mirador o el fondo de las casas (`construirLadera`). `calcularAlcanceLadera` corta cada franja antes de que tape otro tramo de la calle o se doble en el lado de adentro de las curvas, y un faldón de 25 m en el borde tapa lo que queda debajo.
+- **Jardines y parques:** algunas casas (no las tiendas ni los muros) se retiran 2,4–3,6 m de la vereda y dejan un jardín elevado con murete, reja verde (`reja.png`), pasto (`pasto.jpg`), arbustos y a veces un árbol. También hay parques de barrio (lotes de 14–22 m) con pasto, caminito, bancas, árboles y muro de contención contra el cerro. Texturas generadas con Codex.
 
 ### Novedades de v1.3.2
 

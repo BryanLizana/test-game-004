@@ -52,6 +52,12 @@ for (const semilla of [1, 42, 12345, 87654]) {
   assert.ok(p.casas.flat().some((c) => c.muro));
   assert.ok(p.casas.flat().some((c) => c.negocio >= 0));
   assert.ok(p.casas.flat().every((c) => c.tex >= 0 && c.tex < 24));
+  assert.ok(p.casas.flat().some((c) => c.parque), "hay parques de barrio");
+  assert.ok(p.casas.flat().some((c) => c.retiro > 0 && !c.muro && c.negocio < 0), "hay casas con jardín");
+  assert.ok(p.casas.flat().every((c) => !c.retiro || (c.negocio < 0 && !c.muro)), "tiendas y muros siguen al borde de la vereda");
+  for (const alcance of p.alcance) {
+    assert.ok(alcance.every((d) => Number.isFinite(d) && d <= 150), "alcance de ladera válido");
+  }
   assert.ok(p.parches.length > 20 && p.grietas.length > 20);
   assert.equal(p.polvo, undefined, "sin manchas crema al borde de la pista");
   const tipos = new Set();
