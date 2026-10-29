@@ -2,6 +2,7 @@
 // Unidades: metros. Y arriba. Adelante = -Z. Origen de cada modelo en el suelo, centrado.
 // Texturas opcionales en assets/tex/*.jpg: si alguna falta, el material conserva su color liso.
 import * as THREE from "three";
+import { conNieblaCielo } from "./niebla.js?v=1.4.1";
 
 // ---------------------------------------------------------------------------
 // Cachés de geometrías, materiales y texturas (compartidos entre instancias)
@@ -79,6 +80,7 @@ function mFotoPintada(nombre, color, rough, color2 = 0xffffff) {
     const u = { tintePintura: { value: new THREE.Color(color) }, tintePintura2: { value: new THREE.Color(color2) },
       mascaraPintura: { value: null } };
     m.onBeforeCompile = (sh) => {
+      conNieblaCielo(sh);
       Object.assign(sh.uniforms, u);
       sh.fragmentShader = sh.fragmentShader
         .replace("#include <common>", `#include <common>
@@ -98,9 +100,31 @@ uniform sampler2D mascaraPintura;`)
 }
 // Pintura gastada multiplicada por el color del vehículo (cacheada por color).
 const mPintura = (color, doble = false) => mTex("pintura", color, color, 0.55, { flat: true, doble });
+// Lata de torito con años de uso: rayones, polvo y chorreados toman el color del vehículo (algo
+// desteñido); el óxido y la base al descubierto (píxeles saturados de la foto) quedan sin teñir.
+function mPinturaGastada(color, doble = false) {
+  return mat(`gastada|${color}|${doble}`, () => {
+    const m = new THREE.MeshStandardMaterial({ name: "pintura-gastada", color, roughness: 0.72, metalness: 0.08,
+      flatShading: true, side: doble ? THREE.DoubleSide : THREE.FrontSide });
+    m.onBeforeCompile = (sh) => {
+      conNieblaCielo(sh);
+      sh.fragmentShader = sh.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>
+#ifdef USE_MAP
+  float maxC = max(max(sampledDiffuseColor.r, sampledDiffuseColor.g), sampledDiffuseColor.b);
+  float minC = min(min(sampledDiffuseColor.r, sampledDiffuseColor.g), sampledDiffuseColor.b);
+  float oxido = smoothstep(0.3, 0.55, (maxC - minC) / max(maxC, 0.001));
+  vec3 destenido = mix(diffuse, vec3(dot(diffuse, vec3(0.299, 0.587, 0.114))), 0.18) * 0.9;
+  diffuseColor.rgb = sampledDiffuseColor.rgb * mix(destenido, vec3(1.0), oxido);
+#endif`);
+    };
+    m.customProgramCacheKey = () => "pinturaGastada";
+    return usarTextura(m, "pintura-gastada", null);
+  });
+}
 
+// Cromo opacado por el uso: ya no brilla como espejo
 const mCromo = () => mat("cromo", () => new THREE.MeshStandardMaterial({
-  color: 0xf0f2f5, roughness: 0.15, metalness: 1 }));
+  color: 0xc9ccd0, roughness: 0.38, metalness: 0.9 }));
 const mEspejo = () => mat("espejo", () => new THREE.MeshStandardMaterial({
   color: 0xf4f7fa, roughness: 0.02, metalness: 1 }));
 const mNegro = () => mStd(0x1b1b1d, 0.8);
@@ -108,7 +132,7 @@ const mNegro = () => mStd(0x1b1b1d, 0.8);
 const mEspejoAzul = () => mat("espejoAzul", () => new THREE.MeshStandardMaterial({
   color: 0x3a6fb5, roughness: 0.4, metalness: 0, envMapIntensity: 0 }));
 const mGrisOsc = () => mStd(0x3a3c40, 0.8);
-const mAmarillo = () => mStd(0xf2c200, 0.6);
+const mAmarillo = () => mPinturaGastada(0xf2c200);
 const mNeumatico = () => mTex("llanta", 0x1a1a1a, 0xffffff, 0.92);
 const mAro = () => mat("aro", () => new THREE.MeshStandardMaterial({
   color: 0xb4bac2, roughness: 0.35, metalness: 0.7, flatShading: true }));
@@ -481,8 +505,8 @@ export function crearTorito({ color = 0xc8102e, conConductor = true, detalle = "
   carroceria.name = "carroceria";
   raiz.add(carroceria);
 
-  const mCuerpo = mPintura(color);
-  const mMarco = color === 0xc8102e ? mTex("metal_rojo", color, 0xffffff, 0.45, { metal: 0.3 }) : mPintura(color);
+  const mCuerpo = mPinturaGastada(color);
+  const mMarco = mCuerpo;
   const mNeg = mNegro();
   const mAsiento = mCuerina();
   const mLona = mTex("lona", 0x6e1420, 0xb07070, 0.95);
@@ -761,7 +785,7 @@ export function crearTorito({ color = 0xc8102e, conConductor = true, detalle = "
   const guarda = pon(direccion, new THREE.Group(), 0, -LARGO_HORQ, 0, -RAKE);
   const gGuarda = geo("t_guardabarro", () =>
     new THREE.CylinderGeometry(0.255, 0.255, 0.16, 10, 1, true, 0.45, 2.45).rotateZ(Math.PI / 2));
-  guarda.add(malla(gGuarda, mPintura(color, true)));
+  guarda.add(malla(gGuarda, mPinturaGastada(color, true)));
 
   // --- Ruedas traseras ---
   const ruedasTraseras = [-1, 1].map((s) => {
@@ -801,7 +825,7 @@ function crearToritoBajo(color, conConductor, colorTecho = color) {
   const carroceria = new THREE.Group();
   carroceria.name = "carroceria";
   raiz.add(carroceria);
-  const mCuerpo = mPintura(color);
+  const mCuerpo = mPinturaGastada(color);
   const mNeg = mNegro();
   pon(carroceria, malla(caja(1.2, 0.12, 2.0), mCuerpo), 0, 0.36, 0.3);
   const gPanel = geo("t_panel", () => perfilLateral(perfilConArcos(0.42, 1.31, 0.3,
@@ -809,7 +833,7 @@ function crearToritoBajo(color, conConductor, colorTecho = color) {
     [[1.32, 0.42], [1.32, 0.98], [0.56, 0.98], [0.42, 0.84]]), 0.05, 0.02));
   // Dos tonos: costados, pared trasera y techo en colorTecho; faldón y barandas del techo en color
   const dosTonos = colorTecho !== color;
-  const mTecho = mPintura(colorTecho);
+  const mTecho = mPinturaGastada(colorTecho);
   for (const s of [-1, 1]) {
     pon(carroceria, malla(gPanel, dosTonos ? mTecho : mCuerpo), s * 0.625, 0, 0);
     if (dosTonos) {
@@ -862,7 +886,7 @@ function crearToritoBajo(color, conConductor, colorTecho = color) {
   ruedaDelantera.name = "ruedaDelantera";
   const guarda = pon(direccion, new THREE.Group(), 0, -LARGO_HORQ, 0, -RAKE);
   guarda.add(malla(geo("t_guardabarroB", () =>
-    new THREE.CylinderGeometry(0.255, 0.255, 0.16, 6, 1, true, 0.45, 2.45).rotateZ(Math.PI / 2)), mPintura(color, true)));
+    new THREE.CylinderGeometry(0.255, 0.255, 0.16, 6, 1, true, 0.45, 2.45).rotateZ(Math.PI / 2)), mPinturaGastada(color, true)));
   const ruedasTraseras = [-1, 1].map((s) => {
     const r = pon(raiz, crearRuedaSimple(0.21, 0.13), s * 0.53, 0.21, 0.85);
     r.name = s < 0 ? "ruedaTraseraIzq" : "ruedaTraseraDer";

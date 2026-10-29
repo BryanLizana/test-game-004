@@ -1,7 +1,7 @@
 // Web Worker: calcula los bloques de la pista (geometría pura) fuera del hilo principal.
 // Recibe la semilla de la partida, arma la misma Pista y devuelve cada bloque como arreglos
 // de números, transfiriendo la memoria sin copiarla.
-import { Pista } from "./pista.js?v=1.4.0";
+import { Pista } from "./pista.js?v=1.4.1";
 
 let pista = null, claves = null, partida = -1;
 

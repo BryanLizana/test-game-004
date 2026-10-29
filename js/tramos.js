@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { CHUNK } from "./pista.js?v=1.4.0";
-import { crearChoza, liberarRecursos } from "./modelos.js?v=1.4.0";
-import { reserva } from "./reciclaje.js?v=1.4.0";
+import { CHUNK } from "./pista.js?v=1.4.1";
+import { crearChoza, liberarRecursos } from "./modelos.js?v=1.4.1";
+import { reserva } from "./reciclaje.js?v=1.4.1";
 
 // Carga por tramos: solo existen los bloques cercanos al torito. Al avanzar se piden los de
 // adelante a un Web Worker (que calcula la geometría fuera del hilo principal), se montan al
@@ -9,15 +9,18 @@ import { reserva } from "./reciclaje.js?v=1.4.0";
 const ATRAS = 100;          // m que se conservan detrás del torito
 const ADELANTE = 420;       // m que se piden por delante (la niebla tapa ~290 m)
 const HOLGURA = 60;         // margen antes de liberar, para no armar/liberar en vaivén
-const VISIBLE_ATRAS = 80, VISIBLE_ADELANTE = 340;
 const URGENTE = 70;         // si falta un bloque a menos de esto, se calcula aquí sin esperar
+// Además de lo que toca por metros de calle, existe y se ve toda pieza (bloque de calle o losa del
+// terreno) cuya caja quede a menos de esta distancia real: en las curvas cerradas un tramo ya
+// pasado (o uno lejano por la calle) queda delante, y antes desaparecía dejando un hueco.
+const ALCANCE_VISTA = 300;  // la niebla se cierra a 290 m
 
 // Un solo worker para todo el juego: se reutiliza entre partidas
 let obrero = null, obreroFallo = false;
 function obtenerObrero() {
   if (obrero || obreroFallo || typeof Worker === "undefined") return obrero;
   try {
-    obrero = new Worker(new URL("./obrero-pista.js?v=1.4.0", import.meta.url), { type: "module" });
+    obrero = new Worker(new URL("./obrero-pista.js?v=1.4.1", import.meta.url), { type: "module" });
     obrero.addEventListener("error", () => { obreroFallo = true; obrero = null; });
   } catch (_) {
     obreroFallo = true;
@@ -59,6 +62,8 @@ export class GestorTramos {
     this.listos = [];               // datos que ya llegaron y esperan ser montados
     this.mallasLibres = [];         // contenedores reciclados (Mesh) de bloques liberados
     pista.medidasChoza = medidasChoza();
+    this.cajas = this.calcularCajas();
+    this.punto = { x: 0, z: 0 };
     this.partida = ++partidas;
     this.obrero = obtenerObrero();
     if (this.obrero) {
@@ -86,24 +91,55 @@ export class GestorTramos {
     return punto < 0 ? this.mat[clave] : this.mat[clave.slice(0, punto)][+clave.slice(punto + 1)];
   }
 
+  // Caja en planta (x, z) de cada pieza: la calle con sus casas, o el cuadrado de la losa
+  calcularCajas() {
+    const p = this.pista, cajas = [], ANCHO_CASAS = 15;
+    for (let i = 0; i < p.numBloques; i++) {
+      const caja = { x0: Infinity, x1: -Infinity, z0: Infinity, z1: -Infinity };
+      const a = i * CHUNK, b = Math.min(p.n - 1, (i + 1) * CHUNK);
+      for (let j = a; j <= b; j++) {
+        caja.x0 = Math.min(caja.x0, p.x[j] - ANCHO_CASAS); caja.x1 = Math.max(caja.x1, p.x[j] + ANCHO_CASAS);
+        caja.z0 = Math.min(caja.z0, p.z[j] - ANCHO_CASAS); caja.z1 = Math.max(caja.z1, p.z[j] + ANCHO_CASAS);
+      }
+      cajas.push(caja);
+    }
+    for (let i = p.numBloques; i < p.numPiezas; i++) cajas.push(p.cajaLosa(i));
+    return cajas;
+  }
+
+  // Distancia en planta desde el torito hasta la caja de la pieza (0 si está dentro)
+  distancia(i) {
+    const c = this.cajas[i], { x, z } = this.punto;
+    return Math.hypot(Math.max(c.x0 - x, 0, x - c.x1), Math.max(c.z0 - z, 0, z - c.z1));
+  }
+
+  ubicar(s) {
+    const m = this.pista.muestra(s);
+    this.punto.x = m.x; this.punto.z = m.z;
+  }
+
+  porCalle(i, s, margen = 0) {
+    return i < this.pista.numBloques && (i + 1) * CHUNK >= s - ATRAS - margen && i * CHUNK <= s + ADELANTE + margen;
+  }
+
   // Índices que deberían existir para la posición s, del más cercano al más lejano
   pendientes(s) {
-    const desde = Math.max(0, Math.floor((s - ATRAS) / CHUNK));
-    const hasta = Math.min(this.pista.numBloques - 1, Math.floor((s + ADELANTE) / CHUNK));
-    const centro = Math.floor(s / CHUNK);
     const lista = [];
-    for (let i = desde; i <= hasta; i++) if (!this.bloques.has(i)) lista.push(i);
-    return lista.sort((a, b) => Math.abs(a - centro) - Math.abs(b - centro));
+    for (let i = 0; i < this.pista.numPiezas; i++) {
+      if (!this.bloques.has(i) && (this.porCalle(i, s) || this.distancia(i) < ALCANCE_VISTA)) lista.push(i);
+    }
+    return lista.sort((a, b) => this.distancia(a) - this.distancia(b));
   }
 
   necesario(i, s) {
-    return (i + 1) * CHUNK >= s - ATRAS - HOLGURA && i * CHUNK <= s + ADELANTE + HOLGURA;
+    return this.porCalle(i, s, HOLGURA) || this.distancia(i) < ALCANCE_VISTA + HOLGURA;
   }
 
   // Arma de inmediato lo cercano (al empezar la partida); el resto llega por actualizar()
   precargar(s) {
+    this.ubicar(s);
     for (const i of this.pendientes(s)) {
-      if (i * CHUNK > s + 200) break;
+      if (this.distancia(i) > 150 && !(i < this.pista.numBloques && i * CHUNK <= s + 200)) continue;
       this.armar(i);
     }
     this.actualizarVisibles(s);
@@ -112,6 +148,7 @@ export class GestorTramos {
   // Cada cuadro: libera lo lejano, monta lo que llegó del worker (con presupuesto de tiempo),
   // encarga lo que falta y calcula aquí solo lo urgente.
   actualizar(s, presupuestoMs = 4) {
+    this.ubicar(s);
     for (const i of [...this.bloques.keys()]) if (!this.necesario(i, s)) this.liberar(i);
     const inicio = performance.now();
     while (this.listos.length && performance.now() - inicio < presupuestoMs) {
@@ -119,7 +156,7 @@ export class GestorTramos {
       if (!this.bloques.has(datos.indice) && this.necesario(datos.indice, s)) this.colocar(datos.indice, this.montar(datos));
     }
     for (const i of this.pendientes(s)) {
-      const urgente = i * CHUNK < s + URGENTE;
+      const urgente = i < this.pista.numBloques ? (i + 1) * CHUNK > s - 10 && i * CHUNK < s + URGENTE : this.distancia(i) < 40;
       if (this.obrero && !urgente) {
         if (!this.pedidos.has(i)) { this.pedidos.add(i); this.obrero.postMessage({ tipo: "bloque", partida: this.partida, indice: i }); }
       } else if (!this.obrero || urgente) {
@@ -132,7 +169,7 @@ export class GestorTramos {
 
   actualizarVisibles(s) {
     for (const [i, g] of this.bloques) {
-      g.visible = (i + 1) * CHUNK > s - VISIBLE_ATRAS && i * CHUNK < s + VISIBLE_ADELANTE;
+      g.visible = this.distancia(i) < ALCANCE_VISTA;
     }
   }
 

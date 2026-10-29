@@ -2,7 +2,15 @@
 
 ## Estado para retomar — 27/10/2026
 
-**Versión actual: v1.4.0** (sin publicar). Falta probarla en un celular real.
+**Versión actual: v1.4.1** (sin publicar). Falta probarla en un celular real.
+
+### Novedades de v1.4.1
+
+- **Terreno único sin huecos:** el cerro ya no son franjas que salen de cada tramo de calle (en curvas cerradas dejaban grietas y paredones). Ahora es una cuadrícula de losas de 120 m (`datosLosa` en `pista.js`) con una sola altura para todo el mapa (`alturaMundo`): un plano inclinado hacia la montaña, corregido cerca de la calle por lo que la calle realmente baja, y un rellano bajo la calzada hasta el fondo de las casas o la pirca. Las losas vecinas empalman sin rendijas.
+- **Carga por distancia real:** `tramos.js` carga y muestra los bloques de calle y las losas cuya caja quede a menos de 300 m del torito, además de lo que toca por metros de calle. Antes, en las curvas, el cerro de un tramo ya pasado desaparecía delante.
+- **Niebla del color del cielo** (`niebla.js`): lo lejano se funde con la foto del cielo en esa dirección, no con un gris parejo (eso se veía como trozos blancos sobre Lima).
+- **Parques con texturas** (generadas con Codex): `follaje.jpg` en copas y arbustos, `corteza.jpg` en troncos, `banca.jpg` en bancas y `camino-parque.jpg` en el caminito.
+- **Toritos gastados:** carrocería, techo, guardabarros y barandas amarillas usan `pintura-gastada.jpg` (generada con Codex) con `mPinturaGastada` en `modelos.js`. La lata toma el color del torito un poco desteñido, con rayones, polvo y chorreados; el óxido y la base al descubierto (píxeles saturados de la foto) quedan sin teñir. El cromo ya no brilla como espejo.
 
 ### Novedades de v1.4.0
 

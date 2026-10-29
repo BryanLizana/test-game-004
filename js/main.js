@@ -1,13 +1,14 @@
 import * as THREE from "three";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.4.1";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js?v=1.4.0";
-import { GestorTramos } from "./tramos.js?v=1.4.0";
-import { Vehiculo } from "./vehiculo.js?v=1.4.0";
-import { Trafico } from "./trafico.js?v=1.4.0";
-import { Controles } from "./controles.js?v=1.4.0";
-import { Sonido } from "./audio.js?v=1.4.0";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.4.0";
-import { crearLetreros } from "./ambiente.js?v=1.4.0";
+import { Pista, ANCHO } from "./pista.js?v=1.4.1";
+import { GestorTramos } from "./tramos.js?v=1.4.1";
+import { Vehiculo } from "./vehiculo.js?v=1.4.1";
+import { Trafico } from "./trafico.js?v=1.4.1";
+import { Controles } from "./controles.js?v=1.4.1";
+import { Sonido } from "./audio.js?v=1.4.1";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.4.1";
+import { crearLetreros } from "./ambiente.js?v=1.4.1";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -136,6 +137,7 @@ const uniformSuciedad = { value: texturaSuciedad() };
 function ensuciar(material) {
   material.customProgramCacheKey = () => "suciedad";
   material.onBeforeCompile = (sh) => {
+    conNieblaCielo(sh);
     sh.uniforms.mapaSuciedad = uniformSuciedad;
     sh.vertexShader = "varying vec3 vMundo;\n" + sh.vertexShader.replace("#include <begin_vertex>",
       "#include <begin_vertex>\n vMundo = (modelMatrix * vec4(transformed, 1.0)).xyz;");
@@ -224,7 +226,10 @@ const mat = {
   // Jardines y parques del barrio
   pasto: est(0x8f9a6a, { side: THREE.DoubleSide }),
   reja: est(0xffffff, { side: THREE.DoubleSide, alphaTest: 0.5, transparent: false }),
-  follaje: est(0xffffff, { flatShading: true }),
+  follaje: est(0x4f7a35, { roughness: 0.95 }),
+  corteza: est(0x6b5844),
+  banca: est(0x2f5a3a),
+  caminoParque: est(0xa9a49a, { side: THREE.DoubleSide }),
   geoArbusto: new THREE.IcosahedronGeometry(0.42, 0).scale(1, 0.75, 1),
   geoCopa: new THREE.IcosahedronGeometry(1.25, 1).scale(1, 0.8, 1),
   geoTronco: new THREE.CylinderGeometry(0.1, 0.15, 2.4, 6).translate(0, 1.2, 0),
@@ -261,6 +266,10 @@ textura(mat.cerro, "assets/tex/cerro.jpg");
 textura(mat.pasto, "assets/tex/pasto.jpg");
 mat.reja.color.set(0x2f4a3a);   // reja verde oscura mientras carga
 textura(mat.reja, "assets/tex/reja.png");
+textura(mat.follaje, "assets/tex/follaje.jpg");
+textura(mat.corteza, "assets/tex/corteza.jpg");
+textura(mat.banca, "assets/tex/banca.jpg");
+textura(mat.caminoParque, "assets/tex/camino-parque.jpg");
 mat.fachadas.forEach((m, i) => textura(m, `assets/tex/fachada${(i % 4) + 1}.jpg`));
 mat.fachadas.forEach(ensuciar);
 ensuciar(mat.muroLateral);
@@ -722,6 +731,12 @@ function bucle(ahora) {
     colocarCamara(dt);
   }
   cielo.position.copy(camara.position);
+  if (cieloMat.map && !uniformesCielo.cieloListo.value) {
+    // La niebla toma el color de la foto del cielo apenas termina de cargar
+    uniformesCielo.cieloNiebla.value = cieloMat.map;
+    uniformesCielo.cieloTinte.value = cieloMat.color;
+    uniformesCielo.cieloListo.value = 1;
+  }
   actualizarLucesPoste(dt);
   if (estado === "jugando") ajustarCalidad(dt);
   if (sombrasCadaDos && cuadroSombra++ % 2 === 0) renderer.shadowMap.needsUpdate = true;

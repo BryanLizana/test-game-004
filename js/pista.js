@@ -1,4 +1,4 @@
-import * as THREE from "./three.js?v=1.4.0";
+import * as THREE from "./three.js?v=1.4.1";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -11,8 +11,9 @@ const FONDO_TECHO = 7;
 const JARDIN_ALTO = 0.6;         // jardines y parques: tierra elevada sobre la calzada, tras un murete
 const BERMA = 2;                 // franja de tierra entre la trocha y la pirca
 const LARGO_TIERRA = 450;        // primera parte: cerro alto sin pista
-const LADERA_MAX = [150, 150];   // m de ladera a la izquierda (sube) y a la derecha (baja a Lima)
-const CORTES_LADERA = [0, 5, 12, 24, 42, 70, 105, 150];
+const LOSA = 120;                // m de lado de cada losa del terreno
+const PASO_LOSA = 5;             // m entre vértices del terreno
+const MARGEN_TERRENO = 330;      // el terreno cubre la calle y este margen (más allá de la niebla)
 
 function rng(semilla) {
   return () => {
@@ -57,9 +58,9 @@ function matrizYXZ(out, o, x, y, z, rx, ry, rz = 0, k = 1) {
            x, y, z, 1], o);
 }
 
-// Verdes distintos para cada arbusto o copa (colores lineales, como los de las instancias)
+// Tinte de cada arbusto o copa sobre la foto del follaje: unos más amarillos, otros más oscuros
 function coloresFollaje(lista) {
-  const tonos = [[0.13, 0.27, 0.06], [0.2, 0.33, 0.08], [0.1, 0.2, 0.05], [0.26, 0.32, 0.1], [0.16, 0.3, 0.12]];
+  const tonos = [[1, 1, 1], [0.85, 0.92, 0.72], [0.78, 0.85, 0.8], [1.05, 1, 0.78], [0.9, 1, 0.88]];
   const colores = new Float32Array(lista.length * 3);
   lista.forEach((o, k) => colores.set(tonos[o.tono % tonos.length], k * 3));
   return colores;
@@ -82,8 +83,9 @@ export class Pista {
     this.rand = rng(semilla);
     this._muestraMundo = {};
     this._muestraAltura = {};
+    this._muestraTerreno = {};
     this.generarTrazado();
-    this.calcularAlcanceLadera();
+    this.prepararTerreno();
     this.generarDetalles();
   }
 
@@ -163,53 +165,87 @@ export class Pista {
     this.largo = (n - 1) * PASO;
   }
 
-  // Hasta dónde puede llegar la ladera a cada lado sin taparse con otro tramo de la calle
-  // ni doblarse sobre sí misma en el lado de adentro de las curvas.
-  calcularAlcanceLadera() {
-    const n = this.n, CELDA = 14, HOLGURA_CALLE = 13, VECINOS = 28;
-    const celdas = new Map();
-    const clave = (cx, cz) => cx * 100003 + cz;
+  // ---------- Terreno: un solo cerro para todo el mapa ----------
+  // La altura sale de un plano inclinado (la montaña sube hacia -x y hacia donde empieza la calle)
+  // corregido cerca de la calle por lo que la calle realmente baja. Junto a la calle, donde van
+  // las casas o la pirca, el terreno queda como un rellano un poco bajo la calzada.
+  prepararTerreno() {
+    const n = this.n, GX = -0.22;
+    // Plano: y ≈ a + GX·x + gz·z (mínimos cuadrados para a y gz)
+    let sz = 0, sy = 0, szz = 0, szy = 0;
     for (let i = 0; i < n; i++) {
-      const k = clave(Math.floor(this.x[i] / CELDA), Math.floor(this.z[i] / CELDA));
-      if (!celdas.has(k)) celdas.set(k, []);
-      celdas.get(k).push(i);
+      const yy = this.y[i] - GX * this.x[i];
+      sz += this.z[i]; sy += yy; szz += this.z[i] ** 2; szy += this.z[i] * yy;
     }
-    const cercaDeOtraCalle = (px, pz, i) => {
-      const cx = Math.floor(px / CELDA), cz = Math.floor(pz / CELDA);
-      for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
-        const lista = celdas.get(clave(cx + a, cz + b));
-        if (!lista) continue;
-        for (const j of lista) {
-          if (Math.abs(j - i) <= VECINOS) continue;
-          if ((this.x[j] - px) ** 2 + (this.z[j] - pz) ** 2 < HOLGURA_CALLE * HOLGURA_CALLE) return true;
-        }
+    const gz = Math.max(0.05, Math.min(0.3, (n * szy - sz * sy) / Math.max(1e-6, n * szz - sz * sz)));
+    this.plano = { a: (sy - gz * sz) / n, gx: GX, gz };
+    this.residuo = new Float32Array(n);
+    for (let i = 0; i < n; i++) this.residuo[i] = this.y[i] - this.alturaPlano(this.x[i], this.z[i]);
+    const rejilla = (celda, cada) => {
+      const celdas = new Map();
+      for (let i = 0; i < n; i += cada) {
+        const k = Math.floor(this.x[i] / celda) * 100003 + Math.floor(this.z[i] / celda);
+        if (!celdas.has(k)) celdas.set(k, []);
+        celdas.get(k).push(i);
       }
-      return false;
+      return { celda, celdas };
     };
-    this.alcance = [-1, 1].map((sg) => {
-      const maximo = sg < 0 ? LADERA_MAX[0] : LADERA_MAX[1];
-      const crudo = new Float32Array(n);
-      for (let i = 0; i < n; i++) {
-        let limite = maximo;
-        // Lado de adentro de la curva: los rayos laterales se cruzan a una distancia ~1/k
-        for (let j = Math.max(0, i - 20); j <= Math.min(n - 1, i + 20); j++) {
-          if (Math.sign(this.k[j]) === sg && Math.abs(this.k[j]) > 1e-4) limite = Math.min(limite, 0.8 / Math.abs(this.k[j]));
-        }
-        const cs = Math.cos(this.th[i]), sn = Math.sin(this.th[i]);
-        for (let d = 8; d <= limite; d += 4) {
-          if (cercaDeOtraCalle(this.x[i] + cs * sg * d, this.z[i] + sn * sg * d, i)) { limite = d - 4; break; }
-        }
-        crudo[i] = limite;
+    this._cerca = rejilla(20, 1);     // muestra de calle más cercana
+    this._lejos = rejilla(180, 4);    // corrección suave del plano
+    // Losas que cubren la calle con margen
+    let x0 = Infinity, x1 = -Infinity, z0 = Infinity, z1 = -Infinity;
+    for (let i = 0; i < n; i++) {
+      x0 = Math.min(x0, this.x[i]); x1 = Math.max(x1, this.x[i]);
+      z0 = Math.min(z0, this.z[i]); z1 = Math.max(z1, this.z[i]);
+    }
+    this.losas = [];
+    const ox = Math.floor((x0 - MARGEN_TERRENO) / LOSA) * LOSA, oz = Math.floor((z0 - MARGEN_TERRENO) / LOSA) * LOSA;
+    for (let x = ox; x < x1 + MARGEN_TERRENO; x += LOSA) {
+      for (let z = oz; z < z1 + MARGEN_TERRENO; z += LOSA) this.losas.push({ x0: x, z0: z });
+    }
+  }
+
+  alturaPlano(x, z) { return this.plano.a + this.plano.gx * x + this.plano.gz * z; }
+
+  // Altura del terreno en un punto del mundo
+  alturaMundo(x, z) {
+    // Corrección del plano: promedio suave del desvío de la calle en 180 m a la redonda
+    const R = 180;
+    let suma = 0, pesos = 0;
+    const lx = Math.floor(x / R), lz = Math.floor(z / R);
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      const lista = this._lejos.celdas.get((lx + a) * 100003 + lz + b);
+      if (!lista) continue;
+      for (const j of lista) {
+        const d2 = (this.x[j] - x) ** 2 + (this.z[j] - z) ** 2;
+        if (d2 >= R * R) continue;
+        const w = (1 - d2 / (R * R)) ** 2 / (d2 + 400);
+        suma += w * this.residuo[j]; pesos += w;
       }
-      // Mínimo en una ventana y luego promedio: el borde queda parejo, sin dientes
-      const minimo = new Float32Array(n);
-      for (let i = 0; i < n; i++) {
-        let m = Infinity;
-        for (let j = Math.max(0, i - 6); j <= Math.min(n - 1, i + 6); j++) m = Math.min(m, crudo[j]);
-        minimo[i] = m;
+    }
+    const ondula = Math.sin(x * 0.061 + z * 0.023) * 1.6 + Math.sin(z * 0.087 - x * 0.041) * 0.9;
+    let h = this.alturaPlano(x, z) + (pesos > 0 ? suma / pesos : 0) + ondula;
+    // Junto a la calle: rellano bajo la calzada hasta el fondo de las casas (o la pirca) y de ahí
+    // sube o baja hasta el cerro en unos 18 m
+    const C = this._cerca.celda, cx = Math.floor(x / C), cz = Math.floor(z / C);
+    let mejor = Infinity, jm = -1;
+    for (let a = -1; a <= 1; a++) for (let b = -1; b <= 1; b++) {
+      const lista = this._cerca.celdas.get((cx + a) * 100003 + cz + b);
+      if (!lista) continue;
+      for (const j of lista) {
+        const d2 = (this.x[j] - x) ** 2 + (this.z[j] - z) ** 2;
+        if (d2 < mejor) { mejor = d2; jm = j; }
       }
-      return suavizar(minimo, 7);
-    });
+    }
+    if (jm < 0) return h;
+    const lateral = (x - this.x[jm]) * Math.cos(this.th[jm]) + (z - this.z[jm]) * Math.sin(this.th[jm]);
+    const sj = jm * PASO;
+    const zona = sj < this.finTierra ? ANCHO / 2 + BERMA + 0.6
+      : lateral > 0 && this.mirador(sj) ? ANCHO / 2 + VEREDA + 0.4 : ANCHO / 2 + VEREDA + FONDO_TECHO + 0.3;
+    const rellano = this.y[jm] - 0.6, dist = Math.sqrt(mejor);
+    if (dist <= zona) return rellano;
+    const t = Math.min(1, (dist - zona) / 18);
+    return rellano + (h - rellano) * t * t * (3 - 2 * t);
   }
 
   // ---------- Consultas ----------
@@ -285,11 +321,10 @@ export class Pista {
     return ANCHO / 2 + VEREDA + (this.esBarranco(s, lado) ? 0.6 : 0);
   }
 
-  // Ladera fuera de la trocha: un lado sube (cerro) y el otro baja (se ve Lima)
+  // Altura del terreno relativa a la calzada en s, a d metros del eje
   alturaTerreno(s, d) {
-    const fuera = Math.max(0, Math.abs(d) - (ANCHO / 2 + BERMA));
-    const ondula = Math.sin(s * 0.07 + d * 0.15) * 0.8 + Math.sin(s * 0.023 - d * 0.05) * 1.5;
-    return d < 0 ? fuera * 0.42 + ondula * Math.min(1, fuera / 6) : -fuera * 0.55 + ondula * 0.5 * Math.min(1, fuera / 6);
+    const m = this.muestra(s, this._muestraTerreno);
+    return this.alturaMundo(m.x + Math.cos(m.th) * d, m.z + Math.sin(m.th) * d) - m.y;
   }
 
   aMundo(s, d, h = 0, out = new THREE.Vector3(), muestra = null) {
@@ -429,11 +464,14 @@ export class Pista {
 
   // ---------- Mallas ----------
   get numBloques() { return Math.ceil(this.largo / CHUNK); }
+  // Piezas que se cargan por tramos: primero los bloques de calle, después las losas del terreno
+  get numPiezas() { return this.numBloques + this.losas.length; }
 
   // Describe un bloque de 60 m solo con datos (arreglos de números y claves de material):
   // no crea objetos de Three.js, así se puede calcular fuera del hilo principal.
   // `mat` es un espejo de los materiales con claves de texto (ver tramos.js).
   datosBloque(indice, mat) {
+    if (indice >= this.numBloques) return this.datosLosa(indice, mat);
     const s0 = indice * CHUNK, s1 = Math.min(this.largo, s0 + CHUNK);
     const salida = { indice, s0, s1, mallas: [], inst: [], lineas: [], modelos: [] };
     this.construirBloque(salida, s0, s1, mat);
@@ -479,12 +517,6 @@ export class Pista {
     calzada(i0, Math.min(i1, iT), mat.tierra, 5);
     calzada(Math.max(i0, iT), i1, mat.asfalto, 4);
     if (i0 < iT) this.construirCerro(salida, i0, Math.min(i1, iT), mat, tira, nuevo, malla);
-    // Una sola ladera continua: arranca tras la pirca (cerro), la baranda (mirador) o el fondo de las casas
-    this.construirLadera(i0, i1, (i, sg) => {
-      if (i < iT) return { d: ANCHO / 2 + BERMA + 0.5, h: 0 };
-      if (sg > 0 && this.mirador(i * PASO)) return { d: ANCHO / 2 + VEREDA + 0.25, h: -0.5 };
-      return { d: ANCHO / 2 + VEREDA + FONDO_TECHO, h: 0 };
-    }, mat, tira, nuevo, malla);
 
     // Veredas mixtas con sardinel, rebajes y escaleras puntuales.
     const vereda = nuevo();
@@ -700,13 +732,13 @@ export class Pista {
     malla(grafitis, mat.grafiti);
     malla(pastos, mat.pasto);
     malla(rejas, mat.reja, false);
-    malla(caminos, mat.vereda);
+    malla(caminos, mat.caminoParque);
     malla(pircas, mat.pirca);
     const conGiro = (lista) => lista.map((o) => ({ ...o, ry: -this.muestra(o.s).th + (o.giro || 0) }));
     this.instanciasLibres(salida, mat.geoArbusto, mat.follaje, conGiro(verdes.arbustos), true, coloresFollaje(verdes.arbustos));
     this.instanciasLibres(salida, mat.geoCopa, mat.follaje, conGiro(verdes.copas), true, coloresFollaje(verdes.copas));
-    this.instanciasLibres(salida, mat.geoTronco, mat.posteMadera, conGiro(verdes.troncos));
-    this.instanciasLibres(salida, mat.geoBanca, mat.madera, conGiro(verdes.bancas));
+    this.instanciasLibres(salida, mat.geoTronco, mat.corteza, conGiro(verdes.troncos));
+    this.instanciasLibres(salida, mat.geoBanca, mat.banca, conGiro(verdes.bancas));
     this.instancias(salida, techoDetalles.filter((t) => t.tipo === "tanque"), mat.geoTanque, mat.tanque, (t) => [t.s, t.d, t.y + 0.55, true]);
     this.instancias(salida, techoDetalles.filter((t) => t.tipo === "fierros"), mat.geoFierros, mat.fierro, (t) => [t.s, t.d, t.y + 0.5, true]);
     malla(techos, mat.techo);
@@ -858,31 +890,29 @@ export class Pista {
     }
   }
 
-  // Ladera a ambos lados, desde inicio(i, lado) hacia afuera hasta el alcance libre (ver
-  // calcularAlcanceLadera). Un faldón en el borde tapa lo que quede debajo: nunca se ve el vacío.
-  construirLadera(a, b, inicio, mat, tira, nuevo, malla) {
-    const cerca = nuevo(), lejos = nuevo();
-    for (const sg of [-1, 1]) {
-      const alcance = this.alcance[sg < 0 ? 0 : 1];
-      const ord = (p, q) => (sg < 0 ? [q, p] : [p, q]);
-      const punto = (i, d, extra, escala) =>
-        ({ d: sg * d, h: this.alturaTerreno(i * PASO, sg * d) + extra, u: d / escala, v: i / escala });
-      const borde = (i) => Math.max(inicio(i, sg).d, alcance[i]);
-      for (let c = 0; c < CORTES_LADERA.length - 1; c++) {
-        const buf = c < 5 ? cerca : lejos, escala = c < 5 ? 6 : 14;
-        tira(buf, a, b, (i) => {
-          const ini = inicio(i, sg), fin = borde(i);
-          const da = Math.min(ini.d + CORTES_LADERA[c], fin), db = Math.min(ini.d + CORTES_LADERA[c + 1], fin);
-          return ord(punto(i, da, c === 0 ? ini.h : 0, escala), punto(i, db, 0, escala));
-        });
-      }
-      tira(lejos, a, b, (i) => {
-        const fin = borde(i), arriba = punto(i, fin, 0, 14);
-        return ord({ ...arriba, h: arriba.h - 25, v: 0 }, { ...arriba, v: 25 / 14 });
-      });
+  // Losa cuadrada del terreno: una cuadrícula con la altura de alturaMundo. Las losas vecinas
+  // calculan sus bordes con la misma función, así que empalman sin rendijas.
+  datosLosa(indice, mat) {
+    const { x0, z0 } = this.losas[indice - this.numBloques];
+    const N = Math.round(LOSA / PASO_LOSA) + 1;
+    const pos = new Float32Array(N * N * 3), uv = new Float32Array(N * N * 2), idx = new Uint32Array((N - 1) * (N - 1) * 6);
+    for (let a = 0; a < N; a++) for (let b = 0; b < N; b++) {
+      const k = a * N + b, x = x0 + a * PASO_LOSA, z = z0 + b * PASO_LOSA;
+      pos.set([x, this.alturaMundo(x, z), z], k * 3);
+      uv.set([x / 8, z / 8], k * 2);
     }
-    malla(cerca, mat.cerro);
-    malla(lejos, mat.cerro, false);
+    let o = 0;
+    for (let a = 0; a < N - 1; a++) for (let b = 0; b < N - 1; b++) {
+      const k = a * N + b;
+      idx.set([k, k + 1, k + N, k + 1, k + N + 1, k + N], o);
+      o += 6;
+    }
+    return { indice, mallas: [{ mat: mat.cerro, pos, uv, idx, normal: normales(pos, idx), sombra: true }], inst: [], lineas: [], modelos: [] };
+  }
+
+  cajaLosa(indice) {
+    const { x0, z0 } = this.losas[indice - this.numBloques];
+    return { x0, x1: x0 + LOSA, z0, z1: z0 + LOSA };
   }
 
   // Cerro alto: berma de tierra, pircas, ladera y chozas

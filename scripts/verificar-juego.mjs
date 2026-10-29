@@ -55,8 +55,14 @@ for (const semilla of [1, 42, 12345, 87654]) {
   assert.ok(p.casas.flat().some((c) => c.parque), "hay parques de barrio");
   assert.ok(p.casas.flat().some((c) => c.retiro > 0 && !c.muro && c.negocio < 0), "hay casas con jardín");
   assert.ok(p.casas.flat().every((c) => !c.retiro || (c.negocio < 0 && !c.muro)), "tiendas y muros siguen al borde de la vereda");
-  for (const alcance of p.alcance) {
-    assert.ok(alcance.every((d) => Number.isFinite(d) && d <= 150), "alcance de ladera válido");
+  assert.ok(p.losas.length > 20, "el terreno se arma en losas");
+  for (let k = p.numBloques; k < p.numPiezas; k += 7) {
+    const losa = p.datosBloque(k, new Proxy({}, { get: (_, clave) => clave }));
+    assert.ok(losa.mallas[0].pos.every(Number.isFinite), "altura del terreno válida");
+  }
+  // Junto a la calle el terreno queda bajo la calzada (no tapa la pista ni las casas)
+  for (let s = 5; s < p.largo - 5; s += 37) {
+    for (const d of [-5, 0, 5]) assert.ok(p.alturaTerreno(s, d) < 0, `terreno bajo la calle en s=${s}`);
   }
   assert.ok(p.parches.length > 20 && p.grietas.length > 20);
   assert.equal(p.polvo, undefined, "sin manchas crema al borde de la pista");
