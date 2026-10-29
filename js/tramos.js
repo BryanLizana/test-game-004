@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { CHUNK } from "./pista.js?v=1.4.1";
-import { crearChoza, liberarRecursos } from "./modelos.js?v=1.4.1";
-import { reserva } from "./reciclaje.js?v=1.4.1";
+import { CHUNK } from "./pista.js?v=1.4.2";
+import { crearChoza, liberarRecursos } from "./modelos.js?v=1.4.2";
+import { reserva } from "./reciclaje.js?v=1.4.2";
 
 // Carga por tramos: solo existen los bloques cercanos al torito. Al avanzar se piden los de
 // adelante a un Web Worker (que calcula la geometría fuera del hilo principal), se montan al
@@ -13,14 +13,19 @@ const URGENTE = 70;         // si falta un bloque a menos de esto, se calcula aq
 // Además de lo que toca por metros de calle, existe y se ve toda pieza (bloque de calle o losa del
 // terreno) cuya caja quede a menos de esta distancia real: en las curvas cerradas un tramo ya
 // pasado (o uno lejano por la calle) queda delante, y antes desaparecía dejando un hueco.
-const ALCANCE_VISTA = 300;  // la niebla se cierra a 290 m
+const ALCANCE_VISTA = 430;  // el fundido con el cielo termina a 420 m
+// Más lejos que esto no se dibujan los detalles chicos (postes, focos, plantas, tanques, cables,
+// baches, letreros…): casi no se distinguen y son la mayoría de las llamadas de dibujo.
+const DETALLE_LEJOS = 150;
+const ES_DETALLE = /^(bache|reparacion|grieta|huella|letreros|porton|grafiti|reja)/;
+const SIEMPRE_VISIBLE = new Set(["geoCruzPalo", "geoCruzBrazo"]);   // la cruz del cerro se ve de lejos
 
 // Un solo worker para todo el juego: se reutiliza entre partidas
 let obrero = null, obreroFallo = false;
 function obtenerObrero() {
   if (obrero || obreroFallo || typeof Worker === "undefined") return obrero;
   try {
-    obrero = new Worker(new URL("./obrero-pista.js?v=1.4.1", import.meta.url), { type: "module" });
+    obrero = new Worker(new URL("./obrero-pista.js?v=1.4.2", import.meta.url), { type: "module" });
     obrero.addEventListener("error", () => { obreroFallo = true; obrero = null; });
   } catch (_) {
     obreroFallo = true;
@@ -30,7 +35,7 @@ function obtenerObrero() {
 let partidas = 0;
 
 // Espejo de los materiales con claves de texto: lo que recibe pista.datosBloque.
-// mat.fachadas[3] → "fachadas.3", mat.geoPoste → "geoPoste".
+// mat.letreros[3] → "letreros.3", mat.geoPoste → "geoPoste".
 export function clavesDe(mat) {
   const claves = {};
   for (const [nombre, valor] of Object.entries(mat)) {
@@ -169,7 +174,13 @@ export class GestorTramos {
 
   actualizarVisibles(s) {
     for (const [i, g] of this.bloques) {
-      g.visible = this.distancia(i) < ALCANCE_VISTA;
+      const distancia = this.distancia(i);
+      g.visible = distancia < ALCANCE_VISTA;
+      const cerca = distancia < DETALLE_LEJOS;
+      if (g.userData.cerca !== cerca) {
+        g.userData.cerca = cerca;
+        for (const o of g.userData.detalles) o.visible = cerca;
+      }
     }
   }
 
@@ -188,11 +199,13 @@ export class GestorTramos {
   montar(datos) {
     const grupo = new THREE.Group();
     grupo.userData.modelos = [];
+    grupo.userData.detalles = [];
     for (const m of datos.mallas) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(m.pos, 3));
       geo.setAttribute("normal", new THREE.BufferAttribute(m.normal, 3));
       geo.setAttribute("uv", new THREE.BufferAttribute(m.uv, 2));
+      if (m.col) geo.setAttribute("color", new THREE.BufferAttribute(m.col, 3));
       geo.setIndex(new THREE.BufferAttribute(m.idx, 1));
       geo.computeBoundingSphere();
       // Reutiliza contenedores de bloques ya liberados (solo cambia geometría y material)
@@ -200,7 +213,9 @@ export class GestorTramos {
       malla.geometry = geo;
       malla.material = this.resolver(m.mat);
       malla.receiveShadow = m.sombra;
+      malla.visible = true;
       grupo.add(malla);
+      if (ES_DETALLE.test(m.mat)) grupo.userData.detalles.push(malla);
     }
     for (const d of datos.inst) {
       const inst = new THREE.InstancedMesh(this.resolver(d.geo), this.resolver(d.mat), d.matrices.length / 16);
@@ -209,12 +224,15 @@ export class GestorTramos {
       if (d.colores) inst.instanceColor = new THREE.InstancedBufferAttribute(d.colores, 3);
       inst.castShadow = d.sombra;
       grupo.add(inst);
+      if (!SIEMPRE_VISIBLE.has(d.geo)) grupo.userData.detalles.push(inst);
     }
     for (const l of datos.lineas) {
       const geo = new THREE.BufferGeometry();
       geo.setAttribute("position", new THREE.BufferAttribute(l.pos, 3));
       geo.computeBoundingSphere();
-      grupo.add(new THREE.LineSegments(geo, this.resolver(l.mat)));
+      const cables = new THREE.LineSegments(geo, this.resolver(l.mat));
+      grupo.add(cables);
+      grupo.userData.detalles.push(cables);
     }
     for (const mo of datos.modelos) {
       const choza = reserva.tomar(`choza|${mo.variante}`, () => crearChoza({ variante: mo.variante }));

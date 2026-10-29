@@ -1,7 +1,7 @@
 import * as THREE from "three";
 
-// Niebla del color del cielo: lo lejano no se funde en un gris parejo (que se veía como trozos
-// blancos sobre Lima) sino en la foto del cielo que hay justo detrás, en esa misma dirección.
+// Fundido del borde del mapa con el cielo: lo último que se carga no se funde en un gris parejo
+// (que se veía como trozos blancos sobre Lima) sino en la foto del cielo que hay justo detrás.
 // Se importa antes de crear materiales: cambia los trozos de shader de la niebla para todos.
 export const uniformesCielo = {
   cieloNiebla: { value: null },
@@ -32,7 +32,7 @@ THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
     vec3 dir = normalize(vDirCielo);
     float u = fract(atan(dir.z, -dir.x) / 6.2831853);
     float v = pow(clamp(1.0 - acos(clamp(dir.y, -1.0, 1.0)) / 3.14159265, 0.0, 1.0), 1.5);
-    vec3 cielo = textureLod(cieloNiebla, vec2(u, v), 2.0).rgb * cieloTinte;
+    vec3 cielo = textureLod(cieloNiebla, vec2(u, v), 0.0).rgb * cieloTinte;
     #ifdef TONE_MAPPING
       cielo = toneMapping(cielo);
     #endif

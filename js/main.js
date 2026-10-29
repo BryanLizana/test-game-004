@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.4.1";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.4.2";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO } from "./pista.js?v=1.4.1";
-import { GestorTramos } from "./tramos.js?v=1.4.1";
-import { Vehiculo } from "./vehiculo.js?v=1.4.1";
-import { Trafico } from "./trafico.js?v=1.4.1";
-import { Controles } from "./controles.js?v=1.4.1";
-import { Sonido } from "./audio.js?v=1.4.1";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.4.1";
-import { crearLetreros } from "./ambiente.js?v=1.4.1";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.4.2";
+import { GestorTramos } from "./tramos.js?v=1.4.2";
+import { Vehiculo } from "./vehiculo.js?v=1.4.2";
+import { Trafico } from "./trafico.js?v=1.4.2";
+import { Controles } from "./controles.js?v=1.4.2";
+import { Sonido } from "./audio.js?v=1.4.2";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.4.2";
+import { crearLetreros } from "./ambiente.js?v=1.4.2";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -32,7 +32,9 @@ $("escena").appendChild(renderer.domElement);
 const escena = new THREE.Scene();
 const COLOR_NIEBLA = 0xb3b9bd;               // cielo "panza de burro"
 escena.background = new THREE.Color(COLOR_NIEBLA);
-escena.fog = new THREE.Fog(COLOR_NIEBLA, 35, 290);
+// Sin niebla a la vista: solo un fundido con la foto del cielo en el borde de lo cargado (~400 m)
+// para que lo lejano no aparezca de golpe.
+escena.fog = new THREE.Fog(COLOR_NIEBLA, 370, 420);
 
 const camara = new THREE.PerspectiveCamera(72, 1, 0.08, 1200);
 
@@ -134,14 +136,15 @@ function texturaSuciedad() {
   return t;
 }
 const uniformSuciedad = { value: texturaSuciedad() };
-function ensuciar(material) {
-  material.customProgramCacheKey = () => "suciedad";
+// `mapa` reemplaza la lectura de la textura (el atlas de fachadas la cambia)
+function ensuciar(material, mapa = "#include <map_fragment>", clave = "suciedad") {
+  material.customProgramCacheKey = () => clave;
   material.onBeforeCompile = (sh) => {
     conNieblaCielo(sh);
     sh.uniforms.mapaSuciedad = uniformSuciedad;
     sh.vertexShader = "varying vec3 vMundo;\n" + sh.vertexShader.replace("#include <begin_vertex>",
       "#include <begin_vertex>\n vMundo = (modelMatrix * vec4(transformed, 1.0)).xyz;");
-    sh.fragmentShader = "uniform sampler2D mapaSuciedad;\nvarying vec3 vMundo;\n" + sh.fragmentShader.replace("#include <map_fragment>", `#include <map_fragment>
+    sh.fragmentShader = "uniform sampler2D mapaSuciedad;\nvarying vec3 vMundo;\n" + sh.fragmentShader.replace("#include <map_fragment>", `${mapa}
       // dos muestras cruzadas para que funcione en paredes con cualquier orientación
       float s1 = texture2D(mapaSuciedad, vec2(vMundo.x, vMundo.y * 0.8) * 0.09).r;
       float s2 = texture2D(mapaSuciedad, vec2(vMundo.z + 17.0, vMundo.y * 0.8) * 0.09).r;
@@ -165,20 +168,12 @@ const mat = {
   grieta: est(0x292825, { side: THREE.DoubleSide, polygonOffset: true, polygonOffsetFactor: -3 }),
   huella: est(0x282725, { transparent: true, opacity: 0.2, depthWrite: false, side: THREE.DoubleSide,
     polygonOffset: true, polygonOffsetFactor: -3 }),
-  paredes: [0xd7bf8c, 0xa1b9ad, 0xc9a39b, 0xaabcc4, 0xd6cdad, 0xb99a77].map((tinte) => {
-    const m = est(tinte, { side: THREE.DoubleSide });
-    m.userData.tinte = tinte;
-    return m;
-  }),
+  // Paredes pintadas y fachadas: el tinte de cada casa viene en el color de los vértices
+  pared: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
   letreros: crearLetreros(),
   porton: est(0x728585, { side: THREE.DoubleSide }),
   grafiti: est(0xffffff, { side: THREE.DoubleSide }),
-  // Ladrillo y fachadas pintadas, con seis tintes para diferenciar barrios.
-  fachadas: [0xffffff, 0xf2d6c2, 0xd4deec, 0xa9d5c8, 0xf1d184, 0xe5b3a4].flatMap((tinte) => [0xb5653d, 0xd9b04a, 0x3f9fb0, 0xe39a8f].map((base) => {
-    const m = est(new THREE.Color(base).multiply(new THREE.Color(tinte)), { side: THREE.DoubleSide });
-    m.userData.tinte = tinte;
-    return m;
-  })),
+  fachada: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
   geoTanque: new THREE.CylinderGeometry(0.55, 0.55, 1.1, 12),
   tanque: est(0x1c1c1c, { roughness: 0.6 }),
   geoFierros: (() => {
@@ -250,7 +245,8 @@ textura(mat.grieta, "assets/tex/asfalto.jpg");
 mat.porton.userData.tinte = 0x69817d;
 textura(mat.porton, "assets/tex/calamina.jpg");
 textura(mat.grafiti, "assets/tex/grafiti-lima-v1.jpg", false);
-mat.paredes.forEach((m) => { textura(m, "assets/tex/vereda.jpg"); ensuciar(m); });
+textura(mat.pared, "assets/tex/vereda.jpg");
+ensuciar(mat.pared);
 textura(mat.vereda, "assets/tex/vereda.jpg");
 textura(mat.tierra, "assets/tex/tierra.jpg");
 textura(mat.pirca, "assets/tex/pirca2.jpg", true, "assets/tex/pirca.jpg");
@@ -270,8 +266,32 @@ textura(mat.follaje, "assets/tex/follaje.jpg");
 textura(mat.corteza, "assets/tex/corteza.jpg");
 textura(mat.banca, "assets/tex/banca.jpg");
 textura(mat.caminoParque, "assets/tex/camino-parque.jpg");
-mat.fachadas.forEach((m, i) => textura(m, `assets/tex/fachada${(i % 4) + 1}.jpg`));
-mat.fachadas.forEach(ensuciar);
+// Atlas 2x2 con las 4 fotos de fachada. La celda va en la u (u + 100·celda); fract() repite la
+// foto a lo ancho y textureGrad evita la costura del mipmap donde se repite.
+ensuciar(mat.fachada, `#ifdef USE_MAP
+  float celdaAtlas = floor(vMapUv.x / ${CELDA_ATLAS.toFixed(1)} + 0.001);
+  vec2 local = vec2(vMapUv.x - celdaAtlas * ${CELDA_ATLAS.toFixed(1)}, clamp(vMapUv.y, 0.002, 0.998));
+  vec2 origen = vec2(mod(celdaAtlas, 2.0) * 0.5, 0.5 - floor(celdaAtlas / 2.0) * 0.5);
+  vec2 uvAtlas = origen + (0.002 + vec2(fract(local.x), local.y) * 0.996) * 0.5;
+  vec4 sampledDiffuseColor = textureGrad(map, uvAtlas, dFdx(local) * 0.5, dFdy(local) * 0.5);
+  diffuseColor *= sampledDiffuseColor;
+#endif`, "fachadaAtlas");
+Promise.all([1, 2, 3, 4].map((k) => new Promise((ok, mal) => {
+  const img = new Image();
+  img.onload = () => ok(img);
+  img.onerror = mal;
+  img.src = `assets/tex/fachada${k}.jpg`;
+}))).then((fotos) => {
+  const lado = 1024, c = document.createElement("canvas");
+  c.width = c.height = lado * 2;
+  const g = c.getContext("2d");
+  fotos.forEach((img, k) => g.drawImage(img, (k % 2) * lado, Math.floor(k / 2) * lado, lado, lado));
+  const t = new THREE.CanvasTexture(c);
+  t.colorSpace = THREE.SRGBColorSpace;
+  t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+  mat.fachada.map = t;
+  mat.fachada.needsUpdate = true;
+}).catch(() => {});
 ensuciar(mat.muroLateral);
 mat.charco.visible = false;
 
@@ -378,7 +398,6 @@ function aplicarHora() {
   const fondoColor = noche ? 0x0a0f1e : COLOR_NIEBLA;
   escena.background.set(fondoColor);
   escena.fog.color.set(fondoColor);
-  escena.fog.far = noche ? 210 : 290;
   cieloMat.userData.tinte = noche ? 0x1a2242 : 0xffffff;
   cieloMat.color.set(cieloMat.map ? cieloMat.userData.tinte : fondoColor);
   hemi.intensity = noche ? 0.32 : hemiDia;

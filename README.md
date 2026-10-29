@@ -2,7 +2,15 @@
 
 ## Estado para retomar — 27/10/2026
 
-**Versión actual: v1.4.1** (sin publicar). Falta probarla en un celular real.
+**Versión actual: v1.4.2** (sin publicar). Falta probarla en un celular real.
+
+### Novedades de v1.4.2
+
+- **Sin niebla:** todo se ve nítido. Solo queda un fundido con la foto del cielo entre 370 y 420 m, en el borde de lo cargado, para que lo lejano no aparezca de golpe. Para compensar se carga hasta 430 m (`ALCANCE_VISTA` en `tramos.js`) y el terreno cubre 480 m más allá de la calle.
+- **Menos llamadas de dibujo** (de ~690 a ~330–370 en el barrio, con carga hasta 430 m):
+  - Pasados 150 m (`DETALLE_LEJOS` en `tramos.js`) no se dibujan postes, focos, charcos, tanques, fierros, plantas, bancas, cables, baches, letreros, portones, grafitis ni rejas. La cruz del cerro sí.
+  - Las 24 variantes de fachada son un solo material (`mat.fachada`): las 4 fotos van en un atlas 2x2 armado al cargar, la celda va en la u (u + 100·celda, `CELDA_ATLAS`) y el tinte del barrio en el color de los vértices. Igual las 6 paredes pintadas (`mat.pared`). Los tintes están en `TINTES_FACHADA` y `TINTES_PARED` de `pista.js`.
+- **Vista a Lima despejada:** pasando la calle hacia la ciudad (+x) el terreno cae cada vez más (`alturaPlano`), así no tapa la foto de Lima del fondo.
 
 ### Novedades de v1.4.1
 

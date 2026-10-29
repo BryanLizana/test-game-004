@@ -1,4 +1,4 @@
-import * as THREE from "./three.js?v=1.4.1";
+import * as THREE from "./three.js?v=1.4.2";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -7,13 +7,33 @@ export const VEREDA = 1.6;
 export const ALTO_VEREDA = 0.15;
 const PASO = 1;                  // metros entre muestras
 export const CHUNK = 60;         // metros por bloque de malla
+// Tintes de fachada (6 barrios) y de las paredes pintadas: van por vértice, así cada uno es un
+// solo material (antes 24 + 6 materiales y una malla por cada uno en cada bloque).
+export const TINTES_FACHADA = [0xffffff, 0xf2d6c2, 0xd4deec, 0xa9d5c8, 0xf1d184, 0xe5b3a4];
+export const TINTES_PARED = [0xd7bf8c, 0xa1b9ad, 0xc9a39b, 0xaabcc4, 0xd6cdad, 0xb99a77];
+// Las 4 fotos de fachada van en un atlas 2x2: la celda se guarda sumando 100·celda a la u
+export const CELDA_ATLAS = 100;
+
+// Color hex (sRGB) → lineal, como lo espera el atributo de color de los vértices
+function lineal(hex) {
+  return [16, 8, 0].map((k) => {
+    const c = ((hex >> k) & 255) / 255;
+    return c <= 0.04045 ? c / 12.92 : ((c + 0.055) / 1.055) ** 2.4;
+  });
+}
+
+// Completa el color de los vértices agregados desde la última vez
+function tenir(buf, hex) {
+  const [r, g, b] = lineal(hex);
+  while (buf.col.length < buf.pos.length) buf.col.push(r, g, b);
+}
 const FONDO_TECHO = 7;
 const JARDIN_ALTO = 0.6;         // jardines y parques: tierra elevada sobre la calzada, tras un murete
 const BERMA = 2;                 // franja de tierra entre la trocha y la pirca
 const LARGO_TIERRA = 450;        // primera parte: cerro alto sin pista
 const LOSA = 120;                // m de lado de cada losa del terreno
 const PASO_LOSA = 5;             // m entre vértices del terreno
-const MARGEN_TERRENO = 330;      // el terreno cubre la calle y este margen (más allá de la niebla)
+const MARGEN_TERRENO = 480;      // el terreno cubre la calle y este margen (más allá del fundido)
 
 function rng(semilla) {
   return () => {
@@ -178,7 +198,10 @@ export class Pista {
       sz += this.z[i]; sy += yy; szz += this.z[i] ** 2; szy += this.z[i] * yy;
     }
     const gz = Math.max(0.05, Math.min(0.3, (n * szy - sz * sy) / Math.max(1e-6, n * szz - sz * sz)));
-    this.plano = { a: (sy - gz * sz) / n, gx: GX, gz };
+    // Hacia Lima (+x), pasando la calle, el cerro cae cada vez más: así se abre la vista a la ciudad
+    let xMedio = 0;
+    for (let i = 0; i < n; i++) xMedio += this.x[i] / n;
+    this.plano = { a: (sy - gz * sz) / n, gx: GX, gz, xCaida: xMedio + 30 };
     this.residuo = new Float32Array(n);
     for (let i = 0; i < n; i++) this.residuo[i] = this.y[i] - this.alturaPlano(this.x[i], this.z[i]);
     const rejilla = (celda, cada) => {
@@ -205,7 +228,10 @@ export class Pista {
     }
   }
 
-  alturaPlano(x, z) { return this.plano.a + this.plano.gx * x + this.plano.gz * z; }
+  alturaPlano(x, z) {
+    const caida = Math.max(0, x - this.plano.xCaida);
+    return this.plano.a + this.plano.gx * x + this.plano.gz * z - 0.003 * caida * caida;
+  }
 
   // Altura del terreno en un punto del mundo
   alturaMundo(x, z) {
@@ -500,7 +526,8 @@ export class Pista {
     const malla = (buf, material, sombra = true) => {
       if (!buf.idx.length) return;
       const pos = new Float32Array(buf.pos), idx = new Uint32Array(buf.idx);
-      salida.mallas.push({ mat: material, pos, uv: new Float32Array(buf.uv), idx, normal: normales(pos, idx), sombra });
+      salida.mallas.push({ mat: material, pos, uv: new Float32Array(buf.uv), idx, normal: normales(pos, idx), sombra,
+        col: buf.col ? new Float32Array(buf.col) : null });
     };
 
     // Calzada
@@ -619,10 +646,10 @@ export class Pista {
     this.construirHistoria(s0, s1, mat, nuevo, malla);
 
     // Fachadas y techos
-    const fachadas = mat.fachadas.map(() => nuevo());
+    const fachada = { ...nuevo(), col: [] };
     const techoDetalles = [];   // tanques y fierros sobre los techos
     const techos = nuevo(), muros = nuevo();
-    const paredes = mat.paredes.map(() => nuevo()), letreros = mat.letreros.map(() => nuevo());
+    const pared = { ...nuevo(), col: [] }, letreros = mat.letreros.map(() => nuevo());
     const portones = nuevo(), grafitis = nuevo();
     const pastos = nuevo(), rejas = nuevo(), caminos = nuevo(), pircas = nuevo();
     const verdes = { arbustos: [], copas: [], troncos: [], bancas: [] };
@@ -635,7 +662,8 @@ export class Pista {
         const a = Math.max(i0, Math.round(casa.s0 / PASO)), b = Math.min(i1, Math.round(casa.s1 / PASO));
         if (b <= a) continue;
         if (casa.parque) {
-          this.parque(casa, a, b, sg, dPared, dFondo, s0, s1, { pastos, rejas, caminos, pircas, murete: paredes[casa.pintura], verdes }, tira);
+          this.parque(casa, a, b, sg, dPared, dFondo, s0, s1, { pastos, rejas, caminos, pircas, murete: pared, verdes }, tira);
+          tenir(pared, TINTES_PARED[casa.pintura]);
           continue;
         }
         const dFrente = dPared + sg * (casa.retiro || 0);
@@ -644,9 +672,10 @@ export class Pista {
         // La textura representa 8 m x 8.6 m de fachada (3 pisos); las casas bajas muestran solo los de abajo
         const anchoTex = 8, altoTex = 8.6;
         const yPiso = yTecho - casa.alto;
-        const frente = casa.muro ? paredes[casa.pintura] : fachadas[casa.tex];
+        const frente = casa.muro ? pared : fachada;
+        const celda = casa.muro ? 0 : (casa.tex % 4) * CELDA_ATLAS;
         tira(frente, a, b, (i) => {
-          const u = (i * PASO - casa.s0) / anchoTex;
+          const u = (i * PASO - casa.s0) / anchoTex + celda;
           return [
             { d: dFrente, h: -0.6, u, v: Math.max(0, (this.y[i] - 0.6 - yPiso) / altoTex) },
             { d: dFrente, h: yTecho - this.y[i], u, v: casa.alto / altoTex },
@@ -669,7 +698,7 @@ export class Pista {
           { d: dFondo, h: (casa.muro ? yPiso + ALTO_VEREDA : yTecho) - this.y[i], u: FONDO_TECHO / 4, v: i / 4 },
         ]);
         // Zócalos pintados y portones dan escala humana a la calle.
-        const pintado = paredes[casa.pintura];
+        const pintado = pared;
         tira(pintado, a, b, (i) => [
           { d: dFrente - sg * 0.012, h: 0.02, u: i / 4, v: 0 },
           { d: dFrente - sg * 0.012, h: casa.retiro ? JARDIN_ALTO + 0.5 : this.alturaVereda(i, sg) + (casa.muro ? 0.45 : 0.65), u: i / 4, v: 0.35 },
@@ -723,10 +752,12 @@ export class Pista {
           const tope = Math.min(yTecho, techoDe(vecina));
           this.paredLateral(muros, iBorde * PASO, dPared + sg * (vecina.retiro || 0), dFrente, this.y[iBorde] - 0.6, tope, yPiso, altoTex);
         }
+        tenir(fachada, TINTES_FACHADA[Math.floor(casa.tex / 4)]);
+        tenir(pared, TINTES_PARED[casa.pintura]);
       }
     });
-    fachadas.forEach((f, i) => malla(f, mat.fachadas[i]));
-    paredes.forEach((f, i) => malla(f, mat.paredes[i]));
+    malla(fachada, mat.fachada);
+    malla(pared, mat.pared);
     letreros.forEach((f, i) => malla(f, mat.letreros[i]));
     malla(portones, mat.porton);
     malla(grafitis, mat.grafiti);
@@ -963,7 +994,7 @@ export class Pista {
     const berma = nuevo(), pirca = nuevo();
     const dP = ANCHO / 2 + BERMA, GROSOR = 0.5, ALTO = 0.9;
     // Terrazas de pirca de este bloque: se juntan en dos mallas (lados de piedra y tope de tierra)
-    this._terrazas = { lados: nuevo(), tope: nuevo(), muros: nuevo(), techos: nuevo(), fachadas: mat.fachadas.map(() => nuevo()) };
+    this._terrazas = { lados: nuevo(), tope: nuevo(), muros: nuevo(), techos: nuevo(), fachada: { ...nuevo(), col: [] } };
     for (const sg of [-1, 1]) {
       const ord = (p, q) => (sg < 0 ? [q, p] : [p, q]);
       tira(berma, a, b, (i) => ord({ d: sg * ANCHO / 2, h: 0, u: 0, v: i / 5 }, { d: sg * dP, h: 0.05, u: BERMA / 5, v: i / 5 }));
@@ -1004,7 +1035,7 @@ export class Pista {
     malla(t.tope, mat.tierra);
     malla(t.muros, mat.muroLateral);
     malla(t.techos, mat.techo);
-    t.fachadas.forEach((f, i) => malla(f, mat.fachadas[i]));
+    malla(t.fachada, mat.fachada);
     this._terrazas = null;
   }
 
@@ -1021,7 +1052,9 @@ export class Pista {
     const x0 = -fondo / 2, x1 = fondo / 2, z0 = -frente / 2, z1 = frente / 2;
     const xFrente = lado < 0 ? x1 : x0, xAtras = lado < 0 ? x0 : x1;   // el frente mira a la trocha
     const vT = alto / 8.6;
-    this.cuadLocal(t.fachadas[tex], f, [[xFrente, 0, z0, 0, 0], [xFrente, 0, z1, frente / 8, 0], [xFrente, alto, z0, 0, vT], [xFrente, alto, z1, frente / 8, vT]]);
+    const u0 = tex * CELDA_ATLAS;
+    this.cuadLocal(t.fachada, f, [[xFrente, 0, z0, u0, 0], [xFrente, 0, z1, u0 + frente / 8, 0], [xFrente, alto, z0, u0, vT], [xFrente, alto, z1, u0 + frente / 8, vT]]);
+    tenir(t.fachada, TINTES_FACHADA[0]);
     this.cuadLocal(t.muros, f, [[xAtras, 0, z0, 0, 0], [xAtras, 0, z1, frente / 8, 0], [xAtras, alto, z0, 0, vT], [xAtras, alto, z1, frente / 8, vT]]);
     for (const z of [z0, z1]) this.cuadLocal(t.muros, f, [[x0, 0, z, 0, 0], [x1, 0, z, fondo / 8, 0], [x0, alto, z, 0, vT], [x1, alto, z, fondo / 8, vT]]);
     this.cuadLocal(t.techos, f, [[x0, alto, z0, 0, 0], [x1, alto, z0, 1, 0], [x0, alto, z1, 0, 1], [x1, alto, z1, 1, 1]]);
