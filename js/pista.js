@@ -1,4 +1,4 @@
-import * as THREE from "./three.js?v=1.5.5";
+import * as THREE from "./three.js?v=1.5.6";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -697,13 +697,14 @@ export class Pista {
           { d: dFrente, h: (casa.muro ? yPiso + ALTO_VEREDA : yTecho) - this.y[i], u: 0, v: i / 4 },
           { d: dFondo, h: (casa.muro ? yPiso + ALTO_VEREDA : yTecho) - this.y[i], u: FONDO_TECHO / 4, v: i / 4 },
         ]);
-        // Zócalos pintados y portones dan escala humana a la calle.
-        const pintado = pared;
-        tira(pintado, a, b, (i) => [
-          { d: dFrente - sg * 0.012, h: 0.02, u: i / 4, v: 0 },
-          { d: dFrente - sg * 0.012, h: casa.retiro ? JARDIN_ALTO + 0.5 : this.alturaVereda(i, sg) + (casa.muro ? 0.45 : 0.65), u: i / 4, v: 0.35 },
-        ]);
-        if (casa.retiro) this.jardin(casa, a, b, sg, dPared, dFrente, s0, s1, { pastos, rejas, murete: pintado, verdes }, tira);
+        if (casa.retiro) {
+          // Murete del jardín
+          tira(pared, a, b, (i) => [
+            { d: dFrente - sg * 0.012, h: 0.02, u: i / 4, v: 0 },
+            { d: dFrente - sg * 0.012, h: JARDIN_ALTO + 0.5, u: i / 4, v: 0.35 },
+          ]);
+          this.jardin(casa, a, b, sg, dPared, dFrente, s0, s1, { pastos, rejas, murete: pared, verdes }, tira);
+        }
         const centro = (casa.s0 + casa.s1) / 2;
         const ga = Math.max(a, Math.ceil(centro - (casa.muro ? 1.5 : 1.2)));
         const gb = Math.min(b, Math.floor(centro + (casa.muro ? 1.5 : 1.2)));

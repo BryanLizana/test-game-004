@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=1.5.5";
-import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.5.5";
-import * as modelos from "./modelos.js?v=1.5.5";
-import { reserva } from "./reciclaje.js?v=1.5.5";
+import { ANCHO, VEREDA } from "./pista.js?v=1.5.6";
+import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.5.6";
+import * as modelos from "./modelos.js?v=1.5.6";
+import { reserva } from "./reciclaje.js?v=1.5.6";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
