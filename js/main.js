@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.5.0";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.5.3";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.5.0";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.5.0";
-import { Vehiculo } from "./vehiculo.js?v=1.5.0";
-import { Trafico } from "./trafico.js?v=1.5.0";
-import { Controles } from "./controles.js?v=1.5.0";
-import { Sonido } from "./audio.js?v=1.5.0";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.5.0";
-import { crearLetreros } from "./ambiente.js?v=1.5.0";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.5.3";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.5.3";
+import { Vehiculo } from "./vehiculo.js?v=1.5.3";
+import { Trafico } from "./trafico.js?v=1.5.3";
+import { Controles } from "./controles.js?v=1.5.3";
+import { Sonido } from "./audio.js?v=1.5.3";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.5.3";
+import { crearLetreros } from "./ambiente.js?v=1.5.3";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -569,7 +569,7 @@ async function subirTexturas() {
   for (const t of texturas) { renderer.initTexture(t); await pausaCorta(); }
 }
 
-let preparando = true, enCurso = false, repetir = false;
+let preparando = true, enCurso = false, repetir = false, partidaLista = true;
 async function prepararRender() {
   if (enCurso) { repetir = true; return; }   // cambiaron la hora a media preparación
   enCurso = true;
@@ -578,6 +578,7 @@ async function prepararRender() {
   boton.disabled = true;
   const mostrar = (texto, parte) => { boton.textContent = `${texto} ${Math.round(parte * 100)}%`; };
   mostrar("PREPARANDO", 0);
+  $("carga").hidden = false;
   try {
     const variantes = await compilarShaders((p) => mostrar("PREPARANDO", p));
     await subirTexturas();
@@ -589,6 +590,7 @@ async function prepararRender() {
   if (repetir) { repetir = false; return prepararRender(); }
   preparando = false;
   ultimo = performance.now();
+  $("carga").hidden = true;
   boton.textContent = "JUGAR";
   boton.disabled = false;
 }
@@ -868,6 +870,11 @@ function bucle(ahora) {
   }
   actualizarLucesPoste(dt);
   if (estado === "jugando") ajustarCalidad(dt);
+  if (estado === "inicio") {
+    // El menú tapa la escena: no se dibuja, y se aprovecha para dejar lista la calle de adelante
+    if (partidaLista) tramos.actualizar(vehiculo.s);
+    return;
+  }
   if (sombrasCadaDos && cuadroSombra++ % 2 === 0) renderer.shadowMap.needsUpdate = true;
   renderer.render(escena, camara);
 }
@@ -1026,7 +1033,9 @@ function empezar() {
   $("fin").classList.remove("visible");
   $("pausa").classList.remove("visible");
   $("hud").classList.remove("oculto");
-  nuevaPartida();
+  // La primera partida ya quedó armada y compilada: rehacerla justo aquí traba el arranque del sonido
+  if (!partidaLista || trafico.modo !== modoJuego) nuevaPartida();
+  partidaLista = false;
   estado = "jugando";
   ultimo = performance.now();
 }

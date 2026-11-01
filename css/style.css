@@ -29,6 +29,18 @@ html, body {
 }
 .pantalla.visible { display: flex; }
 #inicio { background: #8fa3ad url("../assets/img/inicio.jpg") center 35% / cover no-repeat; }
+/* La ilustración es vertical: en pantalla ancha va completa y centrada, con la misma imagen
+   desenfocada a los lados (cover solo dejaba ver una franja y cortaba la moto). */
+@media (min-width: 900px) and (min-aspect-ratio: 1/1) {
+  #inicio { background: #2a2c30; overflow: hidden; }
+  #inicio::before, #inicio::after {
+    content: "";
+    position: absolute;
+    background: url("../assets/img/inicio.jpg") center / cover no-repeat;
+  }
+  #inicio::before { inset: -40px; z-index: -2; filter: blur(24px) brightness(0.72); }
+  #inicio::after { inset: 0; z-index: -1; background-size: contain; }
+}
 #fin, #pausa { background: rgba(20, 10, 10, 0.7); justify-content: center; gap: 4vh; }
 
 .titulo h1 {
@@ -57,7 +69,31 @@ html, body {
   pointer-events: auto;
 }
 
-.acciones { display: flex; flex-direction: column; align-items: center; gap: 10px; }
+/* Perro persiguiendo al torito mientras carga, fijo sobre el botón. Solo usa transform: el
+   navegador puede moverlo aunque el hilo principal esté compilando shaders (un GIF se trabaría). */
+.carga {
+  --alto: clamp(64px, 15vh, 110px);
+  position: absolute;
+  bottom: 100%;
+  left: 50%;
+  width: calc(var(--alto) * 2);
+  height: var(--alto);
+  margin: 0 0 6px calc(var(--alto) * -1);
+  overflow: hidden;
+  pointer-events: none;
+}
+.carga[hidden] { display: none; }
+.carga-sprite {
+  width: 600%;
+  height: 100%;
+  background: url("../assets/img/carga-perro-torito.png") 0 0 / 100% 100% no-repeat;
+  image-rendering: pixelated;
+  animation: carga-cuadros 0.6s steps(6) infinite;
+  will-change: transform;
+}
+@keyframes carga-cuadros { to { transform: translateX(-100%); } }
+
+.acciones { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .opciones { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 
 .btn {

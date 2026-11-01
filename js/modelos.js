@@ -2,7 +2,7 @@
 // Unidades: metros. Y arriba. Adelante = -Z. Origen de cada modelo en el suelo, centrado.
 // Texturas opcionales en assets/tex/*.jpg: si alguna falta, el material conserva su color liso.
 import * as THREE from "three";
-import { conNieblaCielo } from "./niebla.js?v=1.5.0";
+import { conNieblaCielo } from "./niebla.js?v=1.5.3";
 
 // ---------------------------------------------------------------------------
 // Cachés de geometrías, materiales y texturas (compartidos entre instancias)

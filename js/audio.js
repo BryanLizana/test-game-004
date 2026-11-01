@@ -4,9 +4,10 @@ export class Sonido {
     if (this.ctx) { this.ctx.resume().catch(() => {}); return; }
     const AC = window.AudioContext || window.webkitAudioContext;
     if (!AC) return;
-    const ctx = this.ctx = new AC();
+    // Búfer más amplio: en equipos justos, el audio no se corta durante el arranque
+    const ctx = this.ctx = new AC({ latencyHint: "playback" });
     this.maestro = ctx.createGain();
-    this.maestro.gain.value = 0.8;
+    this.maestro.gain.value = 0;   // sube al empezar, sin chasquido
     this.maestro.connect(ctx.destination);
 
     const ruido = ctx.createBuffer(1, ctx.sampleRate * 2, ctx.sampleRate);
@@ -25,8 +26,9 @@ export class Sonido {
     this.motorFiltro.frequency.value = 600;
     this.motorGain = ctx.createGain();
     this.motorGain.gain.value = 0.18;
-    this.osc1 = ctx.createOscillator(); this.osc1.type = "sawtooth";
-    this.osc2 = ctx.createOscillator(); this.osc2.type = "square";
+    // Parten en ralentí: el valor por defecto (440 Hz) sonaba como un chillido al arrancar
+    this.osc1 = ctx.createOscillator(); this.osc1.type = "sawtooth"; this.osc1.frequency.value = 40;
+    this.osc2 = ctx.createOscillator(); this.osc2.type = "square"; this.osc2.frequency.value = 20;
     const g2 = ctx.createGain(); g2.gain.value = 0.5;
     this.osc1.connect(this.motorFiltro);
     this.osc2.connect(g2).connect(this.motorFiltro);
@@ -90,7 +92,9 @@ export class Sonido {
 
   silenciar(si) {
     if (!this.maestro) return;
-    this.maestro.gain.value = si ? 0 : 0.8;
+    const g = this.maestro.gain, t = this.ctx.currentTime;
+    g.cancelScheduledValues(t);
+    g.setTargetAtTime(si ? 0 : 0.8, t, si ? 0.01 : 0.08);
     if (!si) this.ctx.resume().catch(() => {});
   }
 }
