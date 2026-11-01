@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.5.8";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.1";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.5.8";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.5.8";
-import { Vehiculo } from "./vehiculo.js?v=1.5.8";
-import { Trafico } from "./trafico.js?v=1.5.8";
-import { Controles } from "./controles.js?v=1.5.8";
-import { Sonido } from "./audio.js?v=1.5.8";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.5.8";
-import { crearLetreros } from "./ambiente.js?v=1.5.8";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.1";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.1";
+import { Vehiculo, FRENO_ACTIVO, FRENO_ESPERA } from "./vehiculo.js?v=1.6.1";
+import { Trafico } from "./trafico.js?v=1.6.1";
+import { Controles } from "./controles.js?v=1.6.1";
+import { Sonido } from "./audio.js?v=1.6.1";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.1";
+import { crearLetreros } from "./ambiente.js?v=1.6.1";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -638,6 +638,7 @@ function nuevaPartida() {
   tramos = new GestorTramos(pista, escena, mat, semilla);
   pista.construirFinal(escena);
   vehiculo = new Vehiculo(pista);
+  vehiculo.frenoPulso = modoJuego === "carrera";
   tramos.precargar(vehiculo.s);
   trafico = new Trafico(escena, pista, modoJuego);
   tiempoPartida = 0;
@@ -810,6 +811,7 @@ function actualizarHud(dt) {
   const gastando = controles.freno && vehiculo.estado === "ok" && vehiculo.freno < frenoAnterior;
   frenoAnterior = vehiculo.freno;
   $("b-freno-vida").parentElement.classList.toggle("gastando", gastando);
+  cuentaFreno(vehiculo, dt);
   if (tAviso > 0 && (tAviso -= dt) <= 0) $("aviso").classList.remove("visible");
   if (tGrito > 0 && (tGrito -= dt) <= 0) $("grito").classList.remove("visible");
   $("alerta").classList.toggle("visible", vehiculo.inclinacion > 0.15 && vehiculo.estado === "ok");
@@ -826,7 +828,8 @@ function actualizarHud(dt) {
     b.style.background = malo > 75 ? "#ff3b3b" : malo > 45 ? "#ffb300" : "#3ecf5a";
   };
   barra("b-dano", v.dano);
-  barra("b-freno-vida", v.freno, true);
+  if (v.frenoPulso) barraFrenoPulso(v);
+  else barra("b-freno-vida", v.freno, true);
 }
 
 // ---------- Bucle principal ----------
@@ -858,7 +861,7 @@ function bucle(ahora) {
     tramos.actualizar(vehiculo.s);
     sonido.actualizar({
       rpm: vehiculo.rpm, v: vehiculo.v,
-      chirrido: (vehiculo.raspando ? 0.2 : 0) + (vehiculo.derrapando ? 0.15 : 0) + Math.max(0, Math.abs(vehiculo.acelLat) - 4.5) * 0.05,
+      chirrido: (vehiculo.raspando ? 0.2 : 0) + (vehiculo.derrapando ? 0.15 : 0) + (vehiculo.frenando ? 0.18 : 0) + Math.max(0, Math.abs(vehiculo.acelLat) - 4.5) * 0.05,
       motorVivo: vehiculo.estado === "ok",
     });
     actualizarHud(dt);
@@ -927,6 +930,30 @@ function perderVida(motivo) {
   tRevivir = 1.6;
 }
 
+// Carrera: cuenta regresiva hasta que se pueda volver a frenar; el 0 avisa que ya está listo
+let tFrenoListo = 0;
+function cuentaFreno(v, dt) {
+  const el = $("freno-cuenta");
+  const esperando = v.tFrenoEspera > 0;
+  if (esperando) tFrenoListo = 0.6;
+  else if (tFrenoListo > 0) tFrenoListo = Math.max(0, tFrenoListo - dt);
+  const visible = v.frenoPulso && (esperando || tFrenoListo > 0);
+  if (el.hidden === visible) el.hidden = !visible;
+  if (!visible) return;
+  textoHud("freno-cuenta", String(Math.ceil(v.tFrenoEspera)));
+  el.classList.toggle("listo", !esperando);
+}
+
+// Carrera: verde que se vacía mientras frena, rojo que se llena mientras espera
+function barraFrenoPulso(v) {
+  const b = $("b-freno-vida");
+  const activo = v.tFrenoActivo > 0, esperando = v.tFrenoEspera > 0;
+  const pct = activo ? v.tFrenoActivo / FRENO_ACTIVO * 100 : esperando ? 100 - v.tFrenoEspera / FRENO_ESPERA * 100 : 100;
+  b.style.width = `${pct.toFixed(1)}%`;
+  b.style.background = esperando ? "#ff3b3b" : "#3ecf5a";
+  for (const id of ["b-freno", "b-freno-izq"]) $(id).classList.toggle("activo", activo);
+}
+
 function revivir() {
   if (estado !== "jugando") return;
   controles.centrarDireccion();
@@ -935,6 +962,7 @@ function revivir() {
   v.dano = Math.min(v.dano, 60);
   v.suelo = pista.alturaLateral(v.d, v.s);
   v.acelLat = v.sacudida = v.ladoVuelco = 0;
+  v.tFrenoActivo = v.tFrenoEspera = 0;
   v.raspando = v.derrapando = false;
   torito.userData.vuelco = 0;
   tInvulnerable = 2.5;

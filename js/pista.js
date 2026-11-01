@@ -1,4 +1,4 @@
-import * as THREE from "./three.js?v=1.5.8";
+import * as THREE from "./three.js?v=1.6.1";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).

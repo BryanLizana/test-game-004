@@ -198,6 +198,19 @@ html, body {
 
 #hud { position: fixed; inset: 0; z-index: 5; pointer-events: none; }
 #hud button { pointer-events: auto; }
+.freno-cuenta {
+  position: absolute;
+  top: calc(max(8px, env(safe-area-inset-top)) + 122px);
+  right: calc(max(12px, env(safe-area-inset-right)) + 8px);
+  font-size: clamp(35px, 8.8vh, 61px);
+  font-weight: bold;
+  line-height: 1;
+  color: #ff3b3b;
+  -webkit-text-stroke: 2px #2a0508;
+  text-shadow: 0 3px 8px rgba(0, 0, 0, 0.7);
+}
+.freno-cuenta[hidden] { display: none; }
+.freno-cuenta.listo { color: #3ecf5a; }
 .oculto { display: none !important; }
 
 .hud-sup {

@@ -1,4 +1,4 @@
-import { ANCHO } from "./pista.js?v=1.5.8";
+import { ANCHO } from "./pista.js?v=1.6.1";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
@@ -15,6 +15,8 @@ const FRENO = 1.5;                 // m/s² mientras dura (suave: solo ayuda)
 const VEL_MIN_FRENO = 4.5;         // por debajo de esto el freno ya no agarra (no se detiene)
 const DESGASTE_FRENO = 4;          // % por segundo de uso
 const ENFRIA_FRENO = 1.2;          // % por segundo que recupera cuando no se usa
+export const FRENO_ACTIVO = 3;     // s de freno por pulsación en Carrera
+export const FRENO_ESPERA = 3;     // s sin freno después
 export const ROCE_MOTOR = 0.06;    // el motor engranado frena un poco (proporcional a v)
 
 // Aceleración a lo largo de la calle sin freno: pendiente, rodadura, aire y motor engranado.
@@ -45,6 +47,11 @@ export class Vehiculo {
     this.balanceo = 0;      // rad visuales de la carrocería
     this.dano = 0;          // carrocería %
     this.freno = 100;       // vida del freno %
+    this.frenoPulso = false; // Carrera: una pulsación da un tramo de freno y luego hay que esperar
+    this.tFrenoActivo = 0;
+    this.tFrenoEspera = 0;
+    this.frenoPedido = false;
+    this.frenando = false;  // el freno está actuando en este paso (suena)
     this.estado = "ok";
     this.motivo = "";
     this.tiempo = 0;        // reloj de la física (s), comparable con el de Trafico
@@ -59,8 +66,26 @@ export class Vehiculo {
 
   get kmh() { return this.v * 3.6; }
 
+  // Decide si este paso frena. El pulso solo arranca con una pulsación nueva:
+  // dejar el dedo apretado no vuelve a activarlo cuando termina la espera.
+  frenaEsteTurno(dt, pulsado) {
+    if (!this.frenoPulso) return pulsado;
+    if (this.tFrenoActivo > 0) {
+      this.tFrenoActivo -= dt;
+      if (this.tFrenoActivo <= 0) { this.tFrenoActivo = 0; this.tFrenoEspera = FRENO_ESPERA; }
+    } else if (this.tFrenoEspera > 0) {
+      this.tFrenoEspera = Math.max(0, this.tFrenoEspera - dt);
+    } else if (pulsado && !this.frenoPedido) {
+      this.tFrenoActivo = FRENO_ACTIVO;
+    }
+    this.frenoPedido = pulsado;
+    return this.tFrenoActivo > 0;
+  }
+
   paso(dt, entrada, eventos) {
     this.tiempo += dt;
+    const frena = this.frenaEsteTurno(dt, entrada.freno);
+    this.frenando = false;
     if (this.estado !== "ok") { this.v *= Math.max(0, 1 - dt * 2); return; }
     const p = this.pista;
     const sAntes = this.s;
@@ -73,11 +98,12 @@ export class Vehiculo {
 
     // --- Longitudinal ---
     let a = aceleracionBajada(this.v, m.g, ROCE_MOTOR, Math.cos(this.psi));
-    if (entrada.freno && this.freno > 0 && this.h <= 0 && this.v > VEL_MIN_FRENO) {
+    if (frena && this.freno > 0 && this.h <= 0 && this.v > VEL_MIN_FRENO) {
       a -= FRENO * Math.min(1, (this.v - VEL_MIN_FRENO) / 2);
-      this.freno = Math.max(0, this.freno - DESGASTE_FRENO * dt);
+      this.frenando = true;
+      if (!this.frenoPulso) this.freno = Math.max(0, this.freno - DESGASTE_FRENO * dt);
       if (this.freno === 0) eventos.push({ tipo: "aviso", texto: "¡Se acabó el freno!" });
-    } else if (!entrada.freno) {
+    } else if (!frena) {
       this.freno = Math.min(100, this.freno + ENFRIA_FRENO * dt);
     }
     // Revoluciones solo para el sonido: caja automática imaginaria de 4 cambios
