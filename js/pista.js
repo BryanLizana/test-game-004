@@ -1,4 +1,4 @@
-import * as THREE from "./three.js?v=1.5.6";
+import * as THREE from "./three.js?v=1.5.7";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -33,6 +33,10 @@ const BERMA = 2;                 // franja de tierra entre la trocha y la pirca
 const LARGO_TIERRA = 450;        // primera parte: cerro alto sin pista
 const LOSA = 120;                // m de lado de cada losa del terreno
 const PASO_LOSA = 5;             // m entre vértices del terreno
+const PASO_LEJOS = 4;             // vértices que salta la versión lejana de la losa
+const TOLERANCIA_CALLE = 0.3;    // m de desvío admitido al simplificar el terreno junto a la calle
+const TOLERANCIA_LADERA = 1.5;   // y en la ladera, donde no hay nada que tapar
+const MARGEN_CALLE = 32;         // m a cada lado de la calle: casas y terrazas incluidas
 const MARGEN_TERRENO = 480;      // el terreno cubre la calle y este margen (más allá del fundido)
 
 function rng(semilla) {
@@ -52,6 +56,54 @@ function marcoLocal(pista, s, d, y0, rumbo) {
 }
 
 // Normales por vértice (promedio de las caras): así el bloque sale listo sin depender de Three.js
+// Versión lejana de una cuadrícula de N x N: usa los mismos vértices y salta de a `paso` donde
+// el terreno es casi plano. Junto a la calle (rellanos, cortes) conserva todos los triángulos,
+// porque ahí un cuadro simplificado taparía la calzada. Cada cuadro simple mantiene los puntos de
+// los lados que dan a un vecino detallado o al borde de la losa, así que no se abren rendijas.
+function indicesLejos(N, paso, pos, junto) {
+  const punto = (a, b) => a * N + b, altura = (a, b) => pos[punto(a, b) * 3 + 1], ultimo = N - 1, M = ultimo / paso;
+  const plano = new Uint8Array(M * M);
+  for (let i = 0; i < M; i++) for (let j = 0; j < M; j++) {
+    const a = i * paso, b = j * paso, h00 = altura(a, b), h01 = altura(a, b + paso), h10 = altura(a + paso, b), h11 = altura(a + paso, b + paso);
+    let desvio = 0;
+    for (let p = 0; p <= paso; p++) for (let q = 0; q <= paso; q++) {
+      const u = p / paso, v = q / paso;
+      const esperada = (h00 * (1 - v) + h01 * v) * (1 - u) + (h10 * (1 - v) + h11 * v) * u;
+      desvio = Math.max(desvio, Math.abs(altura(a + p, b + q) - esperada));
+    }
+    plano[i * M + j] = desvio < (junto[i * M + j] ? TOLERANCIA_CALLE : TOLERANCIA_LADERA) ? 1 : 0;
+  }
+  const esPlano = (i, j) => i >= 0 && j >= 0 && i < M && j < M && plano[i * M + j] === 1;
+  const salida = [];
+  for (let i = 0; i < M; i++) for (let j = 0; j < M; j++) {
+    const a = i * paso, b = j * paso, a1 = a + paso, b1 = b + paso;
+    if (!esPlano(i, j)) {
+      for (let p = a; p < a1; p++) for (let q = b; q < b1; q++) {
+        const k = punto(p, q);
+        salida.push(k, k + 1, k + N, k + 1, k + N + 1, k + N);
+      }
+      continue;
+    }
+    const lados = [!esPlano(i - 1, j), !esPlano(i, j + 1), !esPlano(i + 1, j), !esPlano(i, j - 1)];
+    if (!lados.some(Boolean)) {
+      const p = punto(a, b), q = punto(a, b1), r = punto(a1, b), s = punto(a1, b1);
+      salida.push(p, q, r, q, s, r);
+      continue;
+    }
+    const contorno = [];
+    const lado = (a0, b0, da, db, completo) => {
+      for (let n = 0; n < paso; n += completo ? 1 : paso) contorno.push(punto(a0 + da * n, b0 + db * n));
+    };
+    lado(a, b, 0, 1, lados[0]);
+    lado(a, b1, 1, 0, lados[1]);
+    lado(a1, b1, 0, -1, lados[2]);
+    lado(a1, b, -1, 0, lados[3]);
+    const centro = punto(a + paso / 2, b + paso / 2);
+    contorno.forEach((v, n) => salida.push(centro, v, contorno[(n + 1) % contorno.length]));
+  }
+  return salida;
+}
+
 function normales(pos, idx) {
   const n = new Float32Array(pos.length);
   for (let k = 0; k < idx.length; k += 3) {
@@ -939,7 +991,24 @@ export class Pista {
       idx.set([k, k + 1, k + N, k + 1, k + N + 1, k + N], o);
       o += 6;
     }
-    return { indice, mallas: [{ mat: mat.cerro, pos, uv, idx, normal: normales(pos, idx), sombra: true }], inst: [], lineas: [], modelos: [] };
+    // Las dos versiones van en un solo índice: de lejos solo cambia el tramo que se dibuja
+    const lejos = indicesLejos(N, PASO_LEJOS, pos, this.juntoACalle(x0, z0)), todos = new Uint32Array(idx.length + lejos.length);
+    todos.set(idx);
+    todos.set(lejos, idx.length);
+    return { indice, mallas: [{ mat: mat.cerro, pos, uv, idx: todos, normal: normales(pos, idx), sombra: true, cercaHasta: idx.length }], inst: [], lineas: [], modelos: [] };
+  }
+
+  // Marca los cuadros de la versión lejana de una losa que quedan cerca de la calle
+  juntoACalle(x0, z0) {
+    const lado = PASO_LEJOS * PASO_LOSA, M = Math.round(LOSA / lado), junto = new Uint8Array(M * M);
+    for (let k = 0; k < this.n; k += 4) {
+      const x = this.x[k] - x0, z = this.z[k] - z0;
+      if (x < -MARGEN_CALLE || z < -MARGEN_CALLE || x > LOSA + MARGEN_CALLE || z > LOSA + MARGEN_CALLE) continue;
+      const i0 = Math.max(0, Math.floor((x - MARGEN_CALLE) / lado)), i1 = Math.min(M - 1, Math.floor((x + MARGEN_CALLE) / lado));
+      const j0 = Math.max(0, Math.floor((z - MARGEN_CALLE) / lado)), j1 = Math.min(M - 1, Math.floor((z + MARGEN_CALLE) / lado));
+      for (let i = i0; i <= i1; i++) for (let j = j0; j <= j1; j++) junto[i * M + j] = 1;
+    }
+    return junto;
   }
 
   cajaLosa(indice) {

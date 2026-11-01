@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { CHUNK } from "./pista.js?v=1.5.6";
-import { crearChoza, liberarRecursos } from "./modelos.js?v=1.5.6";
-import { reserva } from "./reciclaje.js?v=1.5.6";
+import { CHUNK } from "./pista.js?v=1.5.7";
+import { crearChoza, liberarRecursos } from "./modelos.js?v=1.5.7";
+import { reserva } from "./reciclaje.js?v=1.5.7";
 
 // Carga por tramos: solo existen los bloques cercanos al torito. Al avanzar se piden los de
 // adelante a un Web Worker (que calcula la geometría fuera del hilo principal), se montan al
@@ -17,6 +17,7 @@ const ALCANCE_VISTA = 430;  // el fundido con el cielo termina a 420 m
 // Más lejos que esto no se dibujan los detalles chicos (postes, focos, plantas, tanques, cables,
 // baches, letreros…): casi no se distinguen y son la mayoría de las llamadas de dibujo.
 const DETALLE_LEJOS = 150;
+const TERRENO_LEJOS = 200;   // m hasta la losa desde donde se usa su versión simple
 const ES_DETALLE = /^(bache|reparacion|grieta|huella|letreros|porton|grafiti|reja)/;
 const SIEMPRE_VISIBLE = new Set(["geoCruzPalo", "geoCruzBrazo"]);   // la cruz del cerro se ve de lejos
 
@@ -25,7 +26,7 @@ let obrero = null, obreroFallo = false;
 function obtenerObrero() {
   if (obrero || obreroFallo || typeof Worker === "undefined") return obrero;
   try {
-    obrero = new Worker(new URL("./obrero-pista.js?v=1.5.6", import.meta.url), { type: "module" });
+    obrero = new Worker(new URL("./obrero-pista.js?v=1.5.7", import.meta.url), { type: "module" });
     obrero.addEventListener("error", () => { obreroFallo = true; obrero = null; });
   } catch (_) {
     obreroFallo = true;
@@ -201,6 +202,16 @@ export class GestorTramos {
     for (const [i, g] of this.bloques) {
       const distancia = this.distancia(i);
       g.visible = distancia < ALCANCE_VISTA;
+      const terreno = g.userData.terreno;
+      if (terreno) {
+        const lejos = distancia > TERRENO_LEJOS;
+        if (terreno.lejos !== lejos || terreno.geo.drawRange.count === Infinity) {
+          terreno.lejos = lejos;
+          const { geo, cercaHasta } = terreno;
+          if (lejos) geo.setDrawRange(cercaHasta, geo.index.count - cercaHasta);
+          else geo.setDrawRange(0, cercaHasta);
+        }
+      }
       const cerca = distancia < DETALLE_LEJOS;
       if (g.userData.cerca !== cerca) {
         g.userData.cerca = cerca;
@@ -238,6 +249,8 @@ export class GestorTramos {
       malla.geometry = geo;
       malla.material = this.resolver(m.mat);
       malla.receiveShadow = m.sombra;
+      if (m.cercaHasta) grupo.userData.terreno = { geo, cercaHasta: m.cercaHasta, lejos: false };
+
       malla.visible = true;
       grupo.add(malla);
       if (ES_DETALLE.test(m.mat)) grupo.userData.detalles.push(malla);

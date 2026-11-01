@@ -44,6 +44,29 @@ assert.match(vuelcoOriginal.motivo, /volcaste/, "Sin frenos conserva el vuelco o
 
 class Vector3 { set(x, y, z) { Object.assign(this, { x, y, z }); return this; } }
 const Pista = clase("js/pista.js", "Pista", { THREE: { Vector3 } });
+// La versión lejana de cada losa no abre rendijas: sus aristas interiores se comparten
+// y su borde es idéntico al de la versión cercana, que es lo que ve la losa vecina.
+function aristasLibres(idx, ini, fin) {
+  const cuenta = new Map();
+  for (let k = ini; k < fin; k += 3) for (let e = 0; e < 3; e++) {
+    const a = idx[k + e], b = idx[k + (e + 1) % 3], clave = a < b ? `${a}-${b}` : `${b}-${a}`;
+    cuenta.set(clave, (cuenta.get(clave) || 0) + 1);
+  }
+  return [...cuenta].filter(([, n]) => n === 1).map(([c]) => c).sort();
+}
+{
+  const p = new Pista(42);
+  for (let l = 0; l < p.losas.length; l += 7) {
+    const m = p.datosBloque(p.numBloques + l, { cerro: "cerro" }).mallas[0];
+    assert.ok(m.cercaHasta > 0 && m.idx.length > m.cercaHasta);
+    assert.deepEqual(aristasLibres(m.idx, m.cercaHasta, m.idx.length), aristasLibres(m.idx, 0, m.cercaHasta), "la losa lejana no abre rendijas");
+    for (let k = m.cercaHasta; k < m.idx.length; k += 3) {
+      const [a, b, c] = [m.idx[k] * 3, m.idx[k + 1] * 3, m.idx[k + 2] * 3];
+      const giro = (m.pos[b + 2] - m.pos[a + 2]) * (m.pos[c] - m.pos[a]) - (m.pos[b] - m.pos[a]) * (m.pos[c + 2] - m.pos[a + 2]);
+      assert.ok(giro > 0, "los triángulos lejanos miran hacia arriba");
+    }
+  }
+}
 let muestras = 0;
 for (const semilla of [1, 42, 12345, 87654]) {
   const p = new Pista(semilla);
