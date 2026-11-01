@@ -74,3 +74,7 @@ node scripts/verificar-juego.mjs
 | `js/modelos.js` | Modelos 3D procedurales (se ven en `pruebas/modelos.html`) |
 | `js/controles.js`, `js/audio.js` | Entrada y sonido |
 | `scripts/version.mjs` | Actualiza la versión en todos los archivos: `node scripts/version.mjs X.Y.Z` |
+
+## Licencia
+
+Este proyecto se distribuye bajo la [GNU General Public License v3.0](LICENSE). Three.js, que se carga desde jsDelivr, tiene su propia licencia MIT.
