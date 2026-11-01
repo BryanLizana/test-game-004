@@ -194,6 +194,27 @@ for (let i = 0; i < 10000; i++) {
 assert.ok(subieron > 0 && caminantes > 0, "en Carrera suben autos y personas");
 assert.ok(rivalesDe(carreraBots).every((a) => a.termino && a.tiempoLlegada > 0));
 assert.ok(carreraBots.puesto(jugador) >= 1 && carreraBots.puesto(jugador) <= 4);
+// El puesto sale del instante de cruce, no del orden en que se actualizan dentro del cuadro
+const fotoFinish = new Trafico(escenaSimple, { ...circuito, cruces: [] }, "carrera");
+const rivalMeta = rivalesDe(fotoFinish)[0];
+for (const a of rivalesDe(fotoFinish)) { a.s = 100; a.v = 0; }
+rivalMeta.s = 939.9; rivalMeta.v = 10; rivalMeta.d = rivalMeta.carril = -1.65;
+const jugadorMeta = { s: 940, d: 1.65, v: 12, h: 0, estado: "llegada", invulnerable: true, tiempoLlegada: 0.001 };
+fotoFinish.actualizar(0.05, jugadorMeta);
+assert.ok(rivalMeta.termino && rivalMeta.tiempoLlegada > jugadorMeta.tiempoLlegada, "el rival cruza después");
+assert.equal(fotoFinish.puesto(jugadorMeta), 1, "un rival que cruza después en el mismo cuadro no adelanta");
+const fotoFinish2 = new Trafico(escenaSimple, { ...circuito, cruces: [] }, "carrera");
+const rivalAntes = rivalesDe(fotoFinish2)[0];
+for (const a of rivalesDe(fotoFinish2)) { a.s = 100; a.v = 0; }
+rivalAntes.s = 939.9; rivalAntes.v = 10; rivalAntes.d = rivalAntes.carril = -1.65;
+fotoFinish2.actualizar(0.05, { ...jugadorMeta, tiempoLlegada: 0.04 });
+assert.equal(fotoFinish2.puesto({ ...jugadorMeta, tiempoLlegada: 0.04 }), 2, "un rival que cruza antes sí adelanta");
+// El jugador guarda el instante del cruce dentro del paso de física
+const cruce = new Vehiculo(pistaLisa(0.2));
+cruce.s = cruce.pista.largo - 60 - 0.05; cruce.v = 10;
+cruce.paso(1 / 120, { giro: 0, freno: false }, []);
+assert.equal(cruce.estado, "llegada");
+assert.ok(cruce.tiempoLlegada > 0 && cruce.tiempoLlegada <= cruce.tiempo, "cruce dentro del paso");
 // Un rival que choca con un auto se queda parado y pierde tiempo
 const choqueBots = new Trafico(escenaSimple, { ...circuito, cruces: [] }, "carrera");
 const [rival] = rivalesDe(choqueBots);

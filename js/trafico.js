@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=1.4.2";
-import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.4.2";
-import * as modelos from "./modelos.js?v=1.4.2";
-import { reserva } from "./reciclaje.js?v=1.4.2";
+import { ANCHO, VEREDA } from "./pista.js?v=1.4.3";
+import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.4.3";
+import * as modelos from "./modelos.js?v=1.4.3";
+import { reserva } from "./reciclaje.js?v=1.4.3";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -294,7 +294,12 @@ export class Trafico {
   }
 
   puesto(veh) {
-    return 1 + this.agentes.reduce((n, a) => n + (a.rival && (a.termino || a.s > veh.s) ? 1 : 0), 0);
+    const llego = veh.tiempoLlegada != null;
+    return 1 + this.agentes.reduce((n, a) => {
+      if (!a.rival) return n;
+      const delante = a.termino ? !llego || a.tiempoLlegada < veh.tiempoLlegada : a.s > veh.s;
+      return n + (delante ? 1 : 0);
+    }, 0);
   }
 
   // Lo que el rival tiene delante en un carril: tráfico, gente en la pista o el jugador
@@ -348,14 +353,15 @@ export class Trafico {
         }
         const dAnterior = a.d;
         a.d += Math.max(-2.4 * dt, Math.min(2.4 * dt, a.carril - a.d));
-        a.s = Math.min(meta, a.s + a.v * dt);
+        const sAntes = a.s, sLibre = a.s + a.v * dt;
+        a.s = Math.min(meta, sLibre);
         this.colocar(a);
         a.modelo.rotation.y -= Math.atan2((a.d - dAnterior) / Math.max(dt, 0.001), Math.max(1, a.v));
         a.modelo.rotation.z = a.tRetraso > 0 ? 0.25 : Math.max(-0.18, Math.min(0.18, m.k * a.v * a.v * 0.008));
         for (const r of a.modelo.userData.ruedas || []) r.rotation.x -= a.v * dt / 0.3;
         if (a.modelo.userData.ruedaDelantera) a.modelo.userData.ruedaDelantera.rotation.x -= a.v * dt / 0.2;
         for (const r of a.modelo.userData.ruedasTraseras || []) r.rotation.x -= a.v * dt / 0.2;
-        if (a.s >= meta) { a.termino = true; a.tiempoLlegada = this.tiempo; a.v = 0; a.modelo.visible = false; }
+        if (a.s >= meta) { a.termino = true; a.tiempoLlegada = this.tiempo - dt * (sLibre - meta) / Math.max(sLibre - sAntes, 1e-6); a.v = 0; a.modelo.visible = false; }
         if (!a.termino && a.tRetraso === 0) this.chocarRival(a, veh);
       }
       // Choque físico con el jugador: se separan por el eje que menos se encaja y se reparten el golpe.

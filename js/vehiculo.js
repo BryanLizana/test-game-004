@@ -1,4 +1,4 @@
-import { ANCHO } from "./pista.js?v=1.4.2";
+import { ANCHO } from "./pista.js?v=1.4.3";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
@@ -47,6 +47,8 @@ export class Vehiculo {
     this.freno = 100;       // vida del freno %
     this.estado = "ok";
     this.motivo = "";
+    this.tiempo = 0;        // reloj de la física (s), comparable con el de Trafico
+    this.tiempoLlegada = null;
     this.raspando = false;
     this.derrapando = false;
     this.sacudida = 0;
@@ -58,8 +60,10 @@ export class Vehiculo {
   get kmh() { return this.v * 3.6; }
 
   paso(dt, entrada, eventos) {
+    this.tiempo += dt;
     if (this.estado !== "ok") { this.v *= Math.max(0, 1 - dt * 2); return; }
     const p = this.pista;
+    const sAntes = this.s;
     const m = p.muestra(this.s, this.muestra);
 
     // --- Dirección (límite dependiente de la velocidad, como un manubrio real) ---
@@ -183,7 +187,13 @@ export class Vehiculo {
     }
 
     if (this.dano >= 100) return this.chocar("El torito quedó hecho chatarra", eventos);
-    if (this.s >= p.largo - 60) { this.estado = "llegada"; eventos.push({ tipo: "llegada" }); }
+    const meta = p.largo - 60;
+    if (this.s >= meta) {
+      // Instante exacto del cruce dentro del paso: decide el puesto contra los rivales
+      this.tiempoLlegada = this.tiempo - dt * (this.s - meta) / Math.max(this.s - sAntes, 1e-6);
+      this.estado = "llegada";
+      eventos.push({ tipo: "llegada" });
+    }
 
     // Balanceo visual: inclinación por fuerza centrífuga + rueda levantada
     const objetivoBalanceo = this.acelLat * 0.012 + this.ladoVuelco * this.inclinacion * 0.5;
