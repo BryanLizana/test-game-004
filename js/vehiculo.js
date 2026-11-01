@@ -1,4 +1,4 @@
-import { ANCHO } from "./pista.js?v=1.7.1";
+import { ANCHO } from "./pista.js?v=1.7.3";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
@@ -24,8 +24,10 @@ export const ROCE_MOTOR = 0.06;    // el motor engranado frena un poco (proporci
 
 // Aceleración a lo largo de la calle sin freno: pendiente, rodadura, aire y motor engranado.
 // La comparten el jugador y los rivales de Carrera para que bajen igual de rápido.
-export function aceleracionBajada(v, g, roce = ROCE_MOTOR, cosPsi = 1) {
-  return G * Math.sin(Math.atan(g)) * cosPsi - 0.018 * G - 0.0016 * v * v - roce * v + (v < 2 ? 0.8 : 0);
+export function aceleracionBajada(v, g, roce = ROCE_MOTOR, cosPsi = 1, velocidadTrabada = 0) {
+  const bajada = G * Math.sin(Math.atan(g)) * cosPsi - 0.018 * G - 0.0016 * v * v - roce * v + (v < 2 ? 0.8 : 0);
+  // Empuja hasta 60 km/h; el freno puede reducirlos y una bajada fuerte puede superarlos.
+  return velocidadTrabada > 0 ? Math.max(bajada, Math.min(2, (velocidadTrabada - v) * 2)) : bajada;
 }
 
 // Carrera y Sin frenos comparten la misma física: solo cambia lo que hay en la calle.
@@ -112,7 +114,7 @@ export class Vehiculo {
     this.giro += Math.max(-dt * 2.2, Math.min(dt * 2.2, objetivo - this.giro));
 
     // --- Longitudinal ---
-    let a = aceleracionBajada(this.v, m.gFis ?? m.g, ROCE_MOTOR, Math.cos(this.psi));
+    let a = aceleracionBajada(this.v, m.gFis ?? m.g, ROCE_MOTOR, Math.cos(this.psi), p.nivel?.velocidadTrabada);
     if (frena && this.freno > 0 && this.h <= 0 && this.v > VEL_MIN_FRENO) {
       a -= FRENO * Math.min(1, (this.v - VEL_MIN_FRENO) / 2);
       this.frenando = true;
@@ -209,7 +211,8 @@ export class Vehiculo {
       this.d = lado * limite;
       if (vNormal > 0.5) {
         if (vNormal > 7.5) {
-          const motivo = p.enTierra(this.s) ? "¡Te saliste de la trocha!"
+          const motivo = p.enPasoUrbano?.(this.s) ? "¡Te chocaste contra el muro del paso bajo nivel!"
+            : p.enTierra(this.s) ? (p.tienePirca?.(this.s) ? "¡Te chocaste contra la pirca!" : "¡Te saliste de la trocha!")
             : lado > 0 && p.enMirador(this.s)
               ? { concreto: "¡Te chocaste contra la baranda!", malecon: "¡Te chocaste contra la baranda!", guardavia: "¡Te chocaste con el guardavía!", valla: "¡Rompiste la valla!" }[p.mirador(this.s).tipo]
               : "¡Te estrellaste contra una casa!";

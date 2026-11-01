@@ -1,16 +1,16 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.7.1";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.7.3";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.7.1";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.7.1";
-import { nivelDe } from "./niveles.js?v=1.7.1";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.7.1";
-import { armarDecorado } from "./decorado-nivel2.js?v=1.7.1";
-import { Trafico } from "./trafico.js?v=1.7.1";
-import { Controles } from "./controles.js?v=1.7.1";
-import { Sonido } from "./audio.js?v=1.7.1";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.7.1";
-import { crearLetreros } from "./ambiente.js?v=1.7.1";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.7.3";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.7.3";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.7.3";
+import { armarDecorado } from "./decorado-nivel2.js?v=1.7.3";
+import { crearPasoUrbano } from "./paso-urbano.js?v=1.7.3";
+import { Trafico } from "./trafico.js?v=1.7.3";
+import { Controles } from "./controles.js?v=1.7.3";
+import { Sonido } from "./audio.js?v=1.7.3";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.7.3";
+import { crearLetreros } from "./ambiente.js?v=1.7.3";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -60,6 +60,20 @@ sol.shadow.bias = -0.0005;
 escena.add(sol, sol.target);
 
 // ---------- Texturas (con color de respaldo mientras cargan o si faltan) ----------
+// Un único seguimiento de carga: ningún consumidor sustituye callbacks de otro.
+let texturasCargando = false;
+const esperasTexturas = new Set();
+THREE.DefaultLoadingManager.onStart = () => { texturasCargando = true; };
+THREE.DefaultLoadingManager.onProgress = (_url, cargadas, total) => {
+  for (const espera of esperasTexturas) espera.avance(cargadas / total);
+};
+THREE.DefaultLoadingManager.onLoad = () => {
+  texturasCargando = false;
+  // Los atlas se arman con Promise.all: dejar que se apliquen antes de compilar.
+  queueMicrotask(() => {
+    if (!texturasCargando) for (const espera of [...esperasTexturas]) espera.fin();
+  });
+};
 const cargador = new THREE.TextureLoader();
 function textura(material, ruta, repetir = true, respaldo = null) {
   cargador.load(ruta, (t) => {
@@ -364,9 +378,13 @@ function vestirNivel() {
   if (n2) cargarTexturasN2();
   for (const c of CAMBIOS_N2) {
     const m = c.cielo ? cieloMat : c.material;
-    if (n2 && c.mapa && m.map !== c.mapa) { c.base = m.map; m.map = c.mapa; m.needsUpdate = true; }
-    if (!n2 && c.base && m.map === c.mapa) { m.map = c.base; m.needsUpdate = true; }
-    if (c.cielo && m.map && uniformesCielo.cieloListo.value) uniformesCielo.cieloNiebla.value = m.map;
+    if (n2 && c.mapa && m.map !== c.mapa) { c.base = m.map; c.colorBase = m.color.clone(); m.map = c.mapa; m.needsUpdate = true; }
+    if (!n2 && "base" in c && m.map === c.mapa) { m.map = c.base; m.color.copy(c.colorBase); m.needsUpdate = true; }
+    if (c.cielo) {
+      uniformesCielo.cieloNiebla.value = m.map;
+      uniformesCielo.cieloListo.value = m.map ? 1 : 0;
+      uniformesCielo.cieloTinte.value = m.color;
+    }
   }
   const muro = mat.muroLateral.map;
   if (muro) {
@@ -552,15 +570,13 @@ const INSTANCIADOS = new Set(["llantaPintada", "posteMadera", "poste", "foco", "
 const CON_COLOR = new Set(["llantaPintada", "follaje"]);   // instancias con color propio
 const TAMBIEN_MALLA = new Set(["madera"]);
 const SIN_USO = new Set(["prendas"]);
-const SOLO_N2 = new Set(["fachadaN2", "sueloN2", "arenaN2", "vitrinas", "letrerosN2", "barandaMalecon"]);
 
 function esperarTexturas(alAvance) {
+  if (!texturasCargando) return Promise.resolve();
   return new Promise((listo) => {
-    const gestor = THREE.DefaultLoadingManager;
-    const fin = () => { clearTimeout(limite); gestor.onLoad = gestor.onProgress = () => {}; listo(); };
-    const limite = setTimeout(fin, 30000);   // una textura colgada no debe impedir jugar
-    gestor.onProgress = (_url, cargadas, total) => alAvance(cargadas / total);
-    gestor.onLoad = fin;
+    const espera = { avance: alAvance, fin: () => { clearTimeout(limite); esperasTexturas.delete(espera); listo(); } };
+    const limite = setTimeout(espera.fin, 30000);
+    esperasTexturas.add(espera);
   });
 }
 
@@ -578,7 +594,7 @@ function variantesDeShader() {
     return o;
   };
   for (const [nombre, valor] of Object.entries(mat)) {
-    if (SIN_USO.has(nombre) || (SOLO_N2.has(nombre) && nivelJuego !== 2)) continue;
+    if (SIN_USO.has(nombre)) continue;
     const enInstancias = INSTANCIADOS.has(nombre), color = CON_COLOR.has(nombre);
     for (const m of [].concat(valor)) {
       if (!m || !m.isMaterial) continue;
@@ -593,7 +609,7 @@ function variantesDeShader() {
   };
   escena.traverse(copiar);
   for (const parte of partesDeChozas()) agregar(() => instancia(parte.geometria, parte.material, false), parte.material, true, false);
-  const catalogo = trafico.tomarCatalogo();
+  const catalogo = trafico.tomarCatalogo(true);
   for (const modelo of catalogo) modelo.traverse(copiar);
   return { variantes: [...variantes.values()], catalogo };
 }
@@ -647,6 +663,7 @@ async function subirTexturas() {
   const revisar = (m) => { if (m && m.isMaterial) for (const v of Object.values(m)) if (v && v.isTexture && v.image) texturas.add(v); };
   for (const valor of Object.values(mat)) for (const m of [].concat(valor)) revisar(m);
   escena.traverse((o) => { for (const m of [].concat(o.material || [])) revisar(m); });
+  for (const cambio of CAMBIOS_N2) if (cambio.mapa) texturas.add(cambio.mapa);
   for (const t of texturas) { renderer.initTexture(t); await pausaCorta(); }
 }
 
@@ -665,6 +682,7 @@ async function prepararRender(desde = 0) {
   preparando = true;
   const boton = $("btn-jugar");
   boton.disabled = true;
+  $("btn-hora").disabled = true;
   mostrarCarga(desde);
   $("carga").hidden = false;
   try {
@@ -683,20 +701,21 @@ async function prepararRender(desde = 0) {
   $("carga").hidden = true;
   boton.textContent = "JUGAR";
   boton.disabled = false;
+  $("btn-hora").disabled = false;
 }
 
 // ---------- Estado de juego ----------
 const controles = new Controles();
 const sonido = new Sonido();
-let pista, tramos, vehiculo, trafico, decorado = null;
+let pista, tramos, vehiculo, trafico, decorado = null, mundo = null, pasoUrbano = null;
+let ciudadPreparada = null;
+const mundosPorLiberar = [];
 let estado = "inicio";
 let modoJuego = "sinFrenos";
 try { if (localStorage.getItem("modoJuego") === "carrera") modoJuego = "carrera"; } catch (_) {}
-// Nivel de la partida: hasta tener botón en el menú se elige con ?nivel=2
-const nivelUrl = +new URLSearchParams(location.search).get("nivel");
-let nivelGuardado = 1;
-try { nivelGuardado = +localStorage.getItem("nivelJuego") || 1; } catch (_) { /* sin almacenamiento */ }
-let nivelJuego = nivelDe(nivelUrl || nivelGuardado).id;
+// Una sola partida: cerro → ciudad → playa. Reiniciar siempre vuelve al cerro.
+let nivelJuego = 1;
+let metrosCompletados = 0;
 let modoCamara = 1; // 0 = tercera persona, 1 = primera persona
 let tiempoPartida = 0;
 let acumulador = 0;
@@ -704,15 +723,49 @@ let tRevivir = 0, tFin = 0, mostrarFin = null;
 let rodandoFin = false;   // ganó: el torito sigue rodando detrás de los resultados
 const recursosPista = new Set(Object.values(mat).flat());
 
-function nuevaPartida() {
-  const liberados = new Set();
-  if (tramos) tramos.cerrar();
-  if (pista && pista.final) {
-    escena.remove(pista.final);
-    liberarRecursos(pista.final, recursosPista, liberados);
+function crearMundo(nivel) {
+  const grupo = new THREE.Group();
+  grupo.name = `mundo-${nivel}`;
+  escena.add(grupo);
+  const semilla = (Math.random() * 1e9) | 0;
+  const p = new Pista(semilla, nivel);
+  const gestor = new GestorTramos(p, grupo, mat, semilla);
+  if (nivel === 2) p.construirFinal(grupo);
+  const decoracion = p.nivel.costa ? armarDecorado(p, grupo, cargador) : null;
+  const paso = crearPasoUrbano(p, grupo);
+  gestor.precargar(8);
+  return { pista: p, tramos: gestor, trafico: new Trafico(grupo, p, modoJuego), decorado: decoracion, mundo: grupo, pasoUrbano: paso };
+}
+
+function liberarMundo(datos) {
+  if (!datos?.mundo) return;
+  datos.tramos.cerrar();
+  datos.trafico.liberarTodo();
+  datos.decorado?.liberar();
+  datos.pasoUrbano.liberar();
+  if (datos.pista.final) liberarRecursos(datos.pista.final, recursosPista);
+  escena.remove(datos.mundo);
+}
+
+function usarMundo(datos) {
+  ({ pista, tramos, trafico, decorado, mundo, pasoUrbano } = datos);
+  mundo.visible = true;
+}
+
+function liberarMundosPendientes() {
+  const inicio = performance.now();
+  while (mundosPorLiberar.length && performance.now() - inicio < 2) {
+    const datos = mundosPorLiberar[0];
+    const bloque = datos.tramos.bloques.keys().next();
+    if (!bloque.done) datos.tramos.liberar(bloque.value);
+    else { liberarMundo(datos); mundosPorLiberar.shift(); }
   }
-  if (decorado) { decorado.liberar(); decorado = null; }
-  if (trafico) trafico.liberarTodo();
+}
+
+function nuevaPartida() {
+  nivelJuego = 1; metrosCompletados = 0;
+  liberarMundo({ pista, tramos, trafico, decorado, mundo, pasoUrbano });
+  liberarMundo(ciudadPreparada);
   tRevivir = tFin = 0; mostrarFin = null; rodandoFin = false;
   $("fin").classList.remove("rodando");
   eventos.length = 0;
@@ -721,17 +774,13 @@ function nuevaPartida() {
   cuadros = tCalidad = 0;
   $("grito").classList.remove("visible");
   if (partes.adorno) { partes.adorno.userData.ang = partes.adorno.userData.vel = 0; partes.adorno.rotation.z = 0; }
-  // La semilla se comparte con el worker que calcula los bloques: ambos arman la misma calle
-  const semilla = (Math.random() * 1e9) | 0;
-  pista = new Pista(semilla, nivelJuego);
-  tramos = new GestorTramos(pista, escena, mat, semilla);
-  pista.construirFinal(escena);
+  usarMundo(crearMundo(1));
+  // Preparar la salida mientras está el menú: al llegar al enlace solo se cambia de mundo.
+  ciudadPreparada = crearMundo(2);
+  ciudadPreparada.mundo.visible = false;
   vestirNivel();
-  if (pista.nivel.costa) decorado = armarDecorado(pista, escena, cargador);
   vehiculo = new Vehiculo(pista);
   vehiculo.frenoPulso = true;
-  tramos.precargar(vehiculo.s);
-  trafico = new Trafico(escena, pista, modoJuego);
   tiempoPartida = 0;
   acumulador = 0;
   vidas = maxVidas();
@@ -743,7 +792,9 @@ function nuevaPartida() {
   controles.centrarDireccion();
   colocarTorito(0);
   colocarCamara(0, true);
-  aviso(pista.nivel.avisoInicio ?? (modoJuego === "carrera" ? "¡Carrera sin frenos contra 3 rivales!" : "¡Se cortó el cable del freno!"), 2.5);
+  tAvisoProtegido = 0;
+  aviso(pista.nivel.avisoInicio ?? (modoJuego === "carrera" ? "¡Carrera sin frenos contra 3 rivales!" : "¡Se cortó el cable del freno!"), pista.nivel.id === 2 ? 6 : 2.5);
+  if (pista.nivel.id === 2) tAvisoProtegido = 6;
 }
 
 // ---------- Gritos del chofer (solo globo de texto) ----------
@@ -757,7 +808,9 @@ function gritar(texto) {
 
 // ---------- Avisos ----------
 let tAviso = 0;
+let tAvisoProtegido = 0;
 function aviso(texto, seg = 2) {
+  if (tAvisoProtegido > 0) return;
   $("aviso").textContent = texto;
   $("aviso").classList.add("visible");
   tAviso = seg;
@@ -910,7 +963,7 @@ function actualizarHud(dt) {
   tHud = 0.1;
   const v = vehiculo;
   textoHud("hud-vel", Math.round(v.kmh));
-  textoHud("hud-dist", `${modoJuego === "carrera" ? `${trafico.puesto(v)}/4 · ` : ""}Faltan ${Math.max(0, Math.round(pista.meta - v.s))} m${modoJuego === "carrera" ? ` · ${tiempoPartida.toFixed(1)} s` : ""}`);
+  textoHud("hud-dist", `${modoJuego === "carrera" ? `${trafico.puesto(v)}/4 · ` : ""}${nivelJuego === 1 ? "Cerro" : "Playa"} · Faltan ${Math.max(0, Math.round(pista.meta - v.s))} m${modoJuego === "carrera" ? ` · ${tiempoPartida.toFixed(1)} s` : ""}`);
   const barra = (id, pct, invertido) => {
     const b = $(id);
     const ancho = `${Math.max(0, Math.min(100, pct))}%`;
@@ -957,6 +1010,7 @@ function bucle(ahora) {
       motorVivo: vehiculo.estado === "ok" || (vehiculo.estado === "llegada" && vehiculo.v > 0),
     });
     actualizarHud(dt);
+    tAvisoProtegido = Math.max(0, tAvisoProtegido - dt);
   }
   if (estado === "terminando" && (tFin -= dt) <= 0 && mostrarFin) {
     const mostrar = mostrarFin; mostrarFin = null; mostrar();
@@ -983,6 +1037,7 @@ function bucle(ahora) {
   }
   if (sombrasCadaDos && cuadroSombra++ % 2 === 0) renderer.shadowMap.needsUpdate = true;
   renderer.render(escena, camara);
+  liberarMundosPendientes();
 }
 
 // ---------- Vidas (corazones pixel-art) ----------
@@ -1124,10 +1179,51 @@ function procesarEventos() {
     } else if (e.tipo === "choque") {
       perderVida(e.motivo);
     } else if (e.tipo === "llegada") {
-      terminar(true, modoJuego === "carrera" ? "¡Carrera terminada!" : pista.nivel.mensajeMeta);
+      if (nivelJuego === 1) continuarHastaLaPlaya();
+      else terminar(true, modoJuego === "carrera" ? "¡Carrera terminada!" : pista.nivel.mensajeMeta);
     }
   }
   eventos.length = 0;
+}
+
+function continuarHastaLaPlaya() {
+  if (estado !== "jugando") return;
+  const anterior = vehiculo;
+  const mundoAnterior = { pista, tramos, trafico, decorado, mundo, pasoUrbano };
+  const exceso = Math.max(0, anterior.s - pista.meta);
+  // La formación del segundo tramo respeta la clasificación del cerro.
+  const rivales = trafico.agentes.filter((a) => a.rival).map((a) => ({
+    nombre: a.nombre, s: a.s, v: a.v, termino: a.termino, tiempoLlegada: a.tiempoLlegada,
+    delante: a.termino || a.s > anterior.s,
+  })).sort((a, b) => a.termino && b.termino ? a.tiempoLlegada - b.tiempoLlegada
+    : a.termino ? -1 : b.termino ? 1 : b.s - a.s);
+  metrosCompletados += pista.meta;
+  nivelJuego = 2;
+  usarMundo(ciudadPreparada);
+  ciudadPreparada = null;
+  // Se conserva el vehículo completo, los controles y el sonido. Solo cambia su pista.
+  Object.assign(vehiculo, { pista, s: 8 + exceso, estado: "ok", tiempo: 0, tiempoLlegada: null,
+    sigRompemuelle: 0, sigBache: 0 });
+  vehiculo.suelo = pista.alturaLateral(vehiculo.d, vehiculo.s);
+  let delante = rivales.filter((a) => a.delante).length, detras = 0;
+  for (const anteriorRival of rivales) {
+    const a = trafico.agentes.find((a) => a.rival && a.nombre === anteriorRival.nombre);
+    a.s = anteriorRival.delante ? vehiculo.s + 6 + 5 * delante-- : vehiculo.s - 2 - 2 * detras++;
+    a.v = anteriorRival.termino ? vehiculo.v : anteriorRival.v;
+    trafico.colocar(a);
+  }
+  vestirNivel();
+  colocarTorito(0);
+  colocarCamara(0, true);
+  tHud = 0;
+  actualizarHud(0);
+  tAvisoProtegido = 0;
+  aviso(pista.nivel.avisoInicio, 6);
+  tAvisoProtegido = 6;
+  mundoAnterior.mundo.visible = false;
+  mundoAnterior.tramos.cerrar(false);
+  mundosPorLiberar.push(mundoAnterior);
+  partidaLista = false;
 }
 
 function terminar(gano, motivo) {
@@ -1136,10 +1232,10 @@ function terminar(gano, motivo) {
   caidaFinal = !gano;   // al perder la última vida el torito siempre termina volcado
   sonido.claxon(false);
   const puestoFinal = modoJuego === "carrera" ? trafico.puesto(vehiculo) : 0;
-  const metros = Math.round(Math.min(vehiculo.s, pista.meta));
+  const metros = Math.round(metrosCompletados + Math.min(vehiculo.s, pista.meta));
   let record = 0;
-  // El récord es por modo y por nivel; el nivel 1 conserva sus claves de siempre
-  const claveRecord = (modoJuego === "carrera" ? "recordMetrosCarrera" : "recordMetros") + (nivelJuego > 1 ? nivelJuego : "");
+  // Récord propio de la ruta completa: no mezclar con los antiguos niveles sueltos.
+  const claveRecord = modoJuego === "carrera" ? "recordRutaCompletaCarrera" : "recordRutaCompleta";
   try { record = +(localStorage.getItem(claveRecord) || 0); } catch (_) { /* sin almacenamiento */ }
   const nuevo = metros > record;
   if (nuevo) try { localStorage.setItem(claveRecord, metros); } catch (_) { /* sin almacenamiento */ }
@@ -1151,7 +1247,7 @@ function terminar(gano, motivo) {
     $("fin-titulo").textContent = gano ? (modoJuego === "carrera" ? puestoFinal === 1 ? "¡GANASTE!" : "¡META!" : "¡LLEGASTE!") : "¡PUM!";
     $("fin-msg").textContent = modoJuego === "carrera" && gano ? `Puesto ${puestoFinal} de 4 · ${motivo}` : motivo;
     $("fin-resumen").innerHTML =
-      `Recorrido: <b>${metros} m</b> de ${Math.round(pista.meta)} m<br>` +
+      `Recorrido: <b>${metros} m</b> · ${nivelJuego === 1 ? "Cerro" : "Cerro → ciudad → playa"}<br>` +
       `Tiempo: <b>${tiempoPartida.toFixed(1)} s</b><br>` +
       `Vidas: <b>${"❤".repeat(Math.max(0, vidas)) || "0"}</b> · Daño: <b>${Math.min(100, Math.round(vehiculo.dano))}%</b> · Freno: <b>${Math.round(vehiculo.freno)}%</b><br>` +
       (nuevo ? "<b>¡Nuevo récord!</b>" : `Récord: ${Math.max(record, metros)} m`);
@@ -1201,22 +1297,6 @@ function mostrarModo() {
   $("btn-modo").textContent = `Modo: ${carrera ? "Carrera" : "Sin frenos"}`;
   $("ayuda-controles").innerHTML = `${carrera ? "<b>Carrera:</b> la misma bajada sin frenos contra 3 rivales, con autos y gente que suben. Tienes 8 vidas.<br>" : ""}<b>Celular:</b> toca cada mitad para girar, o inclina el teléfono. Pedales abajo.<br><b>PC:</b> ← → / A D dirección · S / ↓ / Espacio freno gastado · H claxon · C cámara`;
 }
-let fotosN2Pedidas = nivelJuego === 2;
-function mostrarNivel() { $("btn-nivel").textContent = `Nivel: ${nivelJuego === 2 ? "2 Playa" : "1 Cerro"}`; }
-$("btn-nivel").addEventListener("click", () => {
-  nivelJuego = nivelJuego === 2 ? 1 : 2;
-  try { localStorage.setItem("nivelJuego", String(nivelJuego)); } catch (_) { /* sin almacenamiento */ }
-  mostrarNivel();
-  $("btn-jugar").disabled = true;
-  mostrarCarga(0);
-  // La primera vez hay que esperar las fotos del nivel 2; sin descargas pendientes el gestor no avisaría
-  const espera = nivelJuego === 2 && !fotosN2Pedidas ? esperarTexturas(() => {}) : Promise.resolve();
-  fotosN2Pedidas ||= nivelJuego === 2;
-  nuevaPartida();
-  partidaLista = true;
-  espera.then(() => prepararRender(0));   // cada nivel compila sus materiales
-});
-mostrarNivel();
 $("btn-modo").addEventListener("click", () => {
   modoJuego = modoJuego === "carrera" ? "sinFrenos" : "carrera";
   try { localStorage.setItem("modoJuego", modoJuego); } catch (_) {}
@@ -1331,8 +1411,9 @@ mostrarVibracion();
 $("version-pausa").textContent = $("version").textContent;
 requestAnimationFrame(bucle);
 // El catálogo se toma antes de esperar: así sus texturas entran en la misma carga.
-trafico.devolverCatalogo(trafico.tomarCatalogo());
+trafico.devolverCatalogo(trafico.tomarCatalogo(true));
+cargarTexturasN2();
 esperarTexturas((p) => mostrarCarga(p * PARTE_TEXTURAS)).then(() => { vestirNivel(); return prepararRender(PARTE_TEXTURAS); });
 
 // Acceso para depuración desde la consola
-window.__juego = { get nivel() { return nivelJuego; }, get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, escena, camara, renderer, THREE, nuevaPartida };
+window.__juego = { get nivel() { return nivelJuego; }, get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, get trafico() { return trafico; }, get vidas() { return vidas; }, get tiempo() { return tiempoPartida; }, escena, camara, renderer, THREE, nuevaPartida };

@@ -11,7 +11,8 @@ export const NIVELES = {
     id: 2, ancho: 10.5, vereda: 2.4, fondo: 10, carril: 2.6, terreno: "llano", costa: true,
     deterioro: 0.3, rugosidad: 0.5, rocePlaya: 3, veredaLisa: true,
     textoArco: "PLAYA AGUA DULCE",
-    avisoInicio: "¡Se trabó el acelerador!",
+    avisoInicio: "¡Oh no, ahora el acelerador se trabó!",
+    velocidadTrabada: 60 / 3.6, // m/s: el motor recupera 60 km/h después de frenar
     mensajeMeta: "¡Llegaste a la playa con vida!",
     // g: lo que se ve. gFis: lo que empuja a la moto (el acelerador trabado). Sin gFis, empuja la bajada real.
     // La suma de los largos es 2.800 m; la meta cae donde empieza el tramo con arena.

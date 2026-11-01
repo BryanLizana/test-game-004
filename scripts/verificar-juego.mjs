@@ -44,7 +44,40 @@ assert.match(vuelcoOriginal.motivo, /volcaste/, "Sin frenos conserva el vuelco o
 
 class Vector3 { set(x, y, z) { Object.assign(this, { x, y, z }); return this; } lerpVectors(a, b, t) { return this.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); } }
 const nivelDe = clase("js/niveles.js", "nivelDe");
+// El acelerador del segundo tramo recupera 60 km/h, incluso después de frenar.
+{
+  const p = { ...pistaLisa(0.03), nivel: nivelDe(2) };
+  const v = new Vehiculo(p);
+  v.frenoPulso = true;
+  avanzar(v, 12, entrada());
+  assert.ok(v.kmh > 59.9 && v.kmh < 60.1, `acelerador trabado: ${v.kmh} km/h`);
+  avanzar(v, 2, entrada(true));
+  assert.ok(v.kmh < 59, "el freno todavía reduce la velocidad");
+  avanzar(v, 5, entrada());
+  assert.ok(v.kmh > 59.9, "al soltar el freno vuelve a acelerar a 60");
+  console.log("OK: acelerador trabado a 60 km/h; freno y recuperación de velocidad.");
+}
 const Pista = clase("js/pista.js", "Pista", { THREE: { Vector3 }, nivelDe });
+{
+  const p = new Pista(42);
+  assert.equal(p.tienePirca(0), false);
+  assert.equal(p.tienePirca(89.99), false);
+  assert.equal(p.tienePirca(90), true);
+  assert.equal(p.tienePirca(p.finTierra - 1), true);
+  assert.equal(p.tienePirca(p.finTierra), false);
+  // Aislar la geometría de la berma: ninguna pirca lateral antes de los 90 m.
+  p.construirDetallesCerro = () => {};
+  p.chozas = [];
+  const materiales = new Proxy({}, { get: (_, clave) => ["letreros", "geoPrendas", "geoFrazadas"].includes(clave) ? ["a", "b", "c", "d", "e", "f", "g", "h"] : clave });
+  const geometria = (s0, s1) => {
+    const salida = { mallas: [], inst: [], lineas: [], modelos: [] };
+    p.construirBloque(salida, s0, s1, materiales);
+    return salida.mallas.filter((m) => m.mat === "pircaLisa");
+  };
+  assert.equal(geometria(0, 80).length, 0);
+  assert.ok(geometria(100, 140).length > 0);
+  console.log("OK: primeros 90 m sin pirca y muros restaurados en el resto de la trocha.");
+}
 // La versión lejana de cada losa no abre rendijas: sus aristas interiores se comparten
 // y su borde es idéntico al de la versión cercana, que es lo que ve la losa vecina.
 function aristasLibres(idx, ini, fin) {
@@ -276,7 +309,7 @@ assert.ok(cruce.tiempoLlegada > 0 && cruce.tiempoLlegada <= cruce.tiempo, "cruce
 // Tras la meta rueda solo y se para antes de que se acabe el plano, incluso a toda velocidad
 {
   const p = new Pista(11), v = new Vehiculo(p);
-  v.s = p.meta - 0.05; v.v = 32; v.d = 4.2; v.psi = 0.3;
+  v.s = p.meta - 0.05; v.v = 32; v.d = 2.1; v.psi = 0.1;
   const ev = [], apretando = { giro: 1, freno: true };
   v.paso(1 / 120, apretando, ev);
   assert.equal(v.estado, "llegada");
@@ -336,7 +369,9 @@ for (const semilla of [3, 42, 777, 2026]) {
   const t = new Trafico(escenaSimple, p, "sinFrenos");
   assert.ok(t.agentes.length > 5);
   assert.ok(t.agentes.every((a) => ["carro", "persona", "busAzul", "paradero", "semaforo"].includes(a.tipo)), "tráfico sembrado del nivel 2");
-  assert.ok(t.agentes.filter((a) => a.tipo === "carro").every((a) => Math.abs(a.d) > 3.5), "estacionados al borde de la calle ancha");
+  assert.ok(t.agentes.filter((a) => a.estacionado).every((a) => Math.abs(a.d) > 3.5), "estacionados al borde de la calle ancha");
+  assert.ok(t.agentes.filter((a) => a.tipo === "carro" && a.v !== 0).length >= 4, "la ciudad ya tiene circulación al entrar");
+  assert.ok(t.agentes.filter((a) => a.ciclista && p.barrio(a.s) === "ciudad").length >= 2, "bicicletas también en ciudad");
   const veh = { s: 300, d: 2.6, v: 15, h: 0, estado: "ok", invulnerable: true };
   for (let i = 0; i < 2400; i++) t.actualizar(1 / 60, veh);
   assert.ok(t.agentes.every((a) => !["torito", "perro", "gato", "obra", "desmonte"].includes(a.tipo)), "nada del barrio sube");
@@ -384,6 +419,10 @@ assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "desmonte"));
         vistos.add(a.tipo);
         if (a.ciclista) vistos.add("ciclista");
         if (a.deportivo) vistos.add("deportivista");
+        if (a.deportivo && !a.chocado) {
+          assert.ok(a.v <= 0 && a.sentido === -1 && a.d < 0, "el deportivo viene por el carril contrario");
+          assert.ok(!a.decorado, "el deportivo participa en las colisiones");
+        }
         if ((a.tipo === "busAzul" || a.tipo === "bus") && a.s > finSan + 260) busTrasBajada++;
       }
       avisos += t.noticias.length; t.noticias.length = 0;
@@ -395,6 +434,17 @@ assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "desmonte"));
     assert.ok(!["torito", "perro", "gato", "obra", "desmonte", "bus"].some((x) => vistos.has(x)), "nada ajeno al nivel 2");
   };
   [1, 7, 21].forEach(pruebaTipos);
+  {
+    const p = new Pista(8, 2), t = new TraficoAzar(escenaSimple, p, "sinFrenos");
+    t.liberarTodo();
+    const veh = { s: 200, d: -p.carril, v: 16, h: 0, estado: "ok", invulnerable: false };
+    t.actualizarNivel2(1 / 60, veh);
+    const deportivo = t.agentes.find((a) => a.deportivo);
+    assert.ok(deportivo && deportivo.s > veh.s && deportivo.v < 0, "aparece delante y viene hacia el jugador");
+    deportivo.s = veh.s + 0.2;
+    const choque = t.actualizar(1 / 60, veh);
+    assert.equal(choque?.agente, deportivo, "invadir su carril puede causar un choque frontal");
+  }
   // Un bus en paradero tapa el carril derecho y deja libre el izquierdo
   {
     const p = new Pista(3, 2), t = new TraficoAzar(escenaSimple, p, "sinFrenos");
@@ -456,4 +506,23 @@ assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "desmonte"));
   console.log(`OK: cruces del nivel 2 esquivados en ${simuladas - golpes} de ${simuladas} simulaciones; sin esquivar choca en ${quieto.golpes} de ${quieto.simuladas}.`);
 }
 console.log("OK: tres bots completan la carrera sin frenos; suben autos y personas; los rivales se retrasan al chocar; sin desmontes en Carrera; liberación global y centrado del timón.");
+// Precargar la ciudad no debe reemplazar el trazado del cerro dentro del worker.
+{
+  const recibidos = [], self = { postMessage: (datos) => recibidos.push(datos) };
+  class PistaWorker {
+    constructor(semilla, nivel) { this.semilla = semilla; this.nivel = nivel; }
+    datosBloque(indice) { return { indice, semilla: this.semilla, nivel: this.nivel, mallas: [], inst: [], lineas: [] }; }
+  }
+  vm.runInNewContext(leer("js/obrero-pista.js").replace(/^import .*;\r?\n/gm, ""), { self, Pista: PistaWorker });
+  const enviar = (data) => self.onmessage({ data });
+  enviar({ tipo: "pista", partida: 1, semilla: 101, nivel: 1 });
+  enviar({ tipo: "pista", partida: 2, semilla: 202, nivel: 2 });
+  enviar({ tipo: "bloque", partida: 1, indice: 3 });
+  enviar({ tipo: "bloque", partida: 2, indice: 4 });
+  assert.deepEqual(recibidos.map((x) => [x.partida, x.datos.semilla]), [[1, 101], [2, 202]]);
+  enviar({ tipo: "cerrar", partida: 1 });
+  enviar({ tipo: "bloque", partida: 1, indice: 5 });
+  assert.equal(recibidos.length, 2, "al liberar un mundo se deja de generar su geometría");
+  console.log("OK: worker mantiene el cerro y la ciudad precargada separados.");
+}
 console.log(`OK: Carrera con la física de Sin frenos, freno gastado, modo original, multitouch y ${muestras} muestras de veredas; geometrías de 4 pistas sin valores inválidos.`);

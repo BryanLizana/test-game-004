@@ -1,19 +1,22 @@
 // Web Worker: calcula los bloques de la pista (geometría pura) fuera del hilo principal.
 // Recibe la semilla de la partida, arma la misma Pista y devuelve cada bloque como arreglos
 // de números, transfiriendo la memoria sin copiarla.
-import { Pista } from "./pista.js?v=1.7.1";
+import { Pista } from "./pista.js?v=1.7.3";
 
-let pista = null, claves = null, partida = -1;
+// El cerro y la ciudad se preparan juntos; cada gestor conserva su trazado.
+const partidas = new Map();
 
 self.onmessage = ({ data }) => {
   if (data.tipo === "pista") {
-    partida = data.partida;
-    claves = data.claves;
-    pista = new Pista(data.semilla, data.nivel);
+    const pista = new Pista(data.semilla, data.nivel);
     pista.medidasChoza = data.medidas;
+    partidas.set(data.partida, { pista, claves: data.claves });
     return;
   }
-  if (data.tipo === "bloque" && pista && data.partida === partida) {
+  if (data.tipo === "cerrar") { partidas.delete(data.partida); return; }
+  const actual = partidas.get(data.partida);
+  if (data.tipo === "bloque" && actual) {
+    const { pista, claves } = actual, partida = data.partida;
     const datos = pista.datosBloque(data.indice, claves);
     const transferir = [];
     for (const m of datos.mallas) {

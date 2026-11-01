@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { CHUNK } from "./pista.js?v=1.7.1";
-import { crearChoza, liberarRecursos } from "./modelos.js?v=1.7.1";
-import { reserva } from "./reciclaje.js?v=1.7.1";
+import { CHUNK } from "./pista.js?v=1.7.3";
+import { crearChoza, liberarRecursos } from "./modelos.js?v=1.7.3";
+import { reserva } from "./reciclaje.js?v=1.7.3";
 
 // Carga por tramos: solo existen los bloques cercanos al torito. Al avanzar se piden los de
 // adelante a un Web Worker (que calcula la geometría fuera del hilo principal), se montan al
@@ -26,7 +26,7 @@ let obrero = null, obreroFallo = false;
 function obtenerObrero() {
   if (obrero || obreroFallo || typeof Worker === "undefined") return obrero;
   try {
-    obrero = new Worker(new URL("./obrero-pista.js?v=1.7.1", import.meta.url), { type: "module" });
+    obrero = new Worker(new URL("./obrero-pista.js?v=1.7.3", import.meta.url), { type: "module" });
     obrero.addEventListener("error", () => { obreroFallo = true; obrero = null; });
   } catch (_) {
     obreroFallo = true;
@@ -109,9 +109,12 @@ export class GestorTramos {
   }
 
   // Deja de escuchar al worker (al cambiar de partida)
-  cerrar() {
-    if (this.obrero) this.obrero.removeEventListener("message", this.alMensaje);
-    this.liberarTodo();
+  cerrar(liberar = true) {
+    if (this.obrero) {
+      this.obrero.removeEventListener("message", this.alMensaje);
+      this.obrero.postMessage({ tipo: "cerrar", partida: this.partida });
+    }
+    if (liberar) this.liberarTodo();
     this.listos.length = 0;
     this.pedidos.clear();
   }

@@ -1,5 +1,5 @@
-import * as THREE from "./three.js?v=1.7.1";
-import { nivelDe } from "./niveles.js?v=1.7.1";
+import * as THREE from "./three.js?v=1.7.3";
+import { nivelDe } from "./niveles.js?v=1.7.3";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -33,6 +33,7 @@ const FONDO_TECHO = 7;
 const JARDIN_ALTO = 0.6;         // jardines y parques: tierra elevada sobre la calzada, tras un murete
 const BERMA = 2;                 // franja de tierra entre la trocha y la pirca
 const LARGO_TIERRA = 540;        // primera parte: cerro alto sin pista
+const INICIO_SIN_MURO = 90;      // ampliación del 20% sobre los 450 m originales
 const LARGO_ESCAPE = 260;        // plano final: el torito rueda aquí hasta pararse
 const LOSA = 120;                // m de lado de cada losa del terreno
 const PASO_LOSA = 5;             // m entre vértices del terreno
@@ -188,9 +189,10 @@ export class Pista {
       // Nivel por tabla: cada tramo reparte rectas y curvas abiertas hasta cubrir su largo
       this.finTierra = 0;
       this.tramosPuestos = [];
-      add(12, 0, 0.01, "inicio", tramos[0].gFis, tramos[0].barrio);
+      // Salida recta del paso bajo nivel: misma pendiente que la avenida del cerro.
+      add(120, 0, 0.02, "inicio", tramos[0].gFis, tramos[0].barrio);
       for (const t of tramos) {
-        const s0 = total === 12 ? 0 : total, fin = s0 + t.largo;
+        const s0 = this.tramosPuestos.length === 0 ? 0 : total, fin = s0 + t.largo;
         if (t.arena) this.meta = this.finCalle = total;
         while (total < fin - 1) {
           const resto = Math.round(fin - total), g = t.g + r() * (t.gVar || 0), fis = t.gFis ?? g;
@@ -484,11 +486,14 @@ export class Pista {
   roceRodar(s) { return s >= this.meta ? this.nivel.rocePlaya : 1; }
   mirador(s) { return this.miradores.find((m) => s >= m.s0 && s < m.s1); }
   enMirador(s) { return !!this.mirador(s); }
+  tienePirca(s) { return s >= INICIO_SIN_MURO && s < this.finTierra; }
+  enPasoUrbano(s) { return this.nivel.id === 1 ? s >= this.meta - 100 && s <= this.meta + 100 : s <= 108; }
   // Mirador sin baranda: pasarse del borde es caer al barranco
   esBarranco(s, lado) { const m = lado > 0 && this.mirador(s); return !!m && m.tipo === "nada"; }
 
   // Distancia lateral máxima antes de chocar: camellón de tierra en el cerro, fachadas en la ciudad
   limiteLateral(s, lado = 1) {
+    if (this.enPasoUrbano(s)) return 3.5;
     if (s < this.finTierra) return this.ancho / 2 + BERMA - 0.25;
     return this.ancho / 2 + this.vereda + (this.esBarranco(s, lado) ? 0.6 : 0);
   }
@@ -1244,19 +1249,27 @@ export class Pista {
   }
 
   construirCerro(salida, a, b, mat, tira, nuevo, malla) {
-    const berma = nuevo();
-    const dP = this.ancho / 2 + BERMA, GROSOR = 0.5, ALTO_CAMELLON = 0.3, CAIDA = 1.5;
+    const berma = nuevo(), pirca = nuevo();
+    const dP = this.ancho / 2 + BERMA, GROSOR = 0.5, ALTO_CAMELLON = 0.3, CAIDA = 1.5, ALTO = 0.9;
+    const inicioMuro = Math.max(a, Math.ceil(INICIO_SIN_MURO / PASO));
+    const finLibre = Math.min(b, Math.ceil(INICIO_SIN_MURO / PASO));
     // Terrazas de pirca de este bloque: se juntan en dos mallas (lados de piedra y tope de tierra)
     this._terrazas = { lados: nuevo(), tope: nuevo(), muros: nuevo(), techos: nuevo(), fachada: { ...nuevo(), col: [] } };
     for (const sg of [-1, 1]) {
       const ord = (p, q) => (sg < 0 ? [q, p] : [p, q]);
       tira(berma, a, b, (i) => ord({ d: sg * this.ancho / 2, h: 0, u: 0, v: i / 5 }, { d: sg * dP, h: 0.05, u: BERMA / 5, v: i / 5 }));
       // Sin muro: la orilla es un camellón bajo de tierra que muere en el terreno
-      tira(berma, a, b, (i) => ord({ d: sg * dP, h: 0.05, u: BERMA / 5, v: i / 5 }, { d: sg * (dP + GROSOR), h: ALTO_CAMELLON, u: (BERMA + GROSOR) / 5, v: i / 5 }));
-      tira(berma, a, b, (i) => ord({ d: sg * (dP + GROSOR), h: ALTO_CAMELLON, u: (BERMA + GROSOR) / 5, v: i / 5 },
+      tira(berma, a, finLibre, (i) => ord({ d: sg * dP, h: 0.05, u: BERMA / 5, v: i / 5 }, { d: sg * (dP + GROSOR), h: ALTO_CAMELLON, u: (BERMA + GROSOR) / 5, v: i / 5 }));
+      tira(berma, a, finLibre, (i) => ord({ d: sg * (dP + GROSOR), h: ALTO_CAMELLON, u: (BERMA + GROSOR) / 5, v: i / 5 },
         { d: sg * (dP + GROSOR + CAIDA), h: this.alturaTerreno(i * PASO, sg * (dP + GROSOR + CAIDA)) - 0.15, u: (BERMA + GROSOR + CAIDA) / 5, v: i / 5 }));
+      // Desde los 90 m vuelve la pirca original: cara interior, tope y cara exterior.
+      tira(pirca, inicioMuro, b, (i) => [{ d: sg * dP, h: 0, u: i / 4, v: 0 }, { d: sg * dP, h: ALTO, u: i / 4, v: 0.45 }]);
+      tira(pirca, inicioMuro, b, (i) => ord({ d: sg * dP, h: ALTO, u: i / 4, v: 0.45 }, { d: sg * (dP + GROSOR), h: ALTO, u: i / 4, v: 0.7 }));
+      tira(pirca, inicioMuro, b, (i) => [{ d: sg * (dP + GROSOR), h: this.alturaTerreno(i * PASO, sg * (dP + GROSOR)) - 0.2, u: i / 4, v: 0 },
+        { d: sg * (dP + GROSOR), h: ALTO, u: i / 4, v: 0.45 }]);
     }
     malla(berma, mat.tierra);
+    malla(pirca, mat.pircaLisa);
     this.construirDetallesCerro(salida, a, b, mat);
 
     for (const c of this.chozas) {
