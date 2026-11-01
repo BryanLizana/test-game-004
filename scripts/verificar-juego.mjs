@@ -224,29 +224,29 @@ const remoto = alcance.agregar("carro", 600, 2, 0, { estacionado: true });
 alcance.actualizar(1 / 60, { s: 90, d: 1.75, v: 5, h: 0, estado: "ok", invulnerable: true });
 assert.equal(cerca.modelo.visible, true);
 assert.equal(remoto.modelo.visible, false);
-// Freno por pulsos de Carrera: 3 s activo, 3 s de espera, y hace falta pulsar de nuevo
+// Freno de Carrera: tanque de 5 s que se recarga al soltar; si se vacía, 5 s bloqueado
 {
   const v = new Vehiculo(pistaLisa(0.2));
   v.frenoPulso = true;
-  const giroCero = { giro: 0, freno: false }, apretado = { giro: 0, freno: true };
-  const correr = (segundos, entrada) => { for (let i = 0; i < segundos * 120; i++) { v.s = 100; v.paso(1 / 120, entrada, []); } };
+  const suelto = { giro: 0, freno: false }, apretado = { giro: 0, freno: true };
+  const correr = (segundos, entrada) => { for (let i = 0; i < segundos * 120; i++) { v.s = 100; v.v = 12; v.paso(1 / 120, entrada, []); } };
+  correr(4, apretado);
+  assert.ok(Math.abs(v.tFrenoTanque - 1) < 0.02 && v.frenando, "se gasta mientras se aprieta y frena");
+  correr(4, suelto);
+  assert.ok(v.tFrenoTanque > 4.95 && !v.frenando, "al soltar recupera lo gastado");
+  correr(2, apretado);
+  correr(0.5, suelto);
+  assert.ok(Math.abs(v.tFrenoTanque - 3.5) < 0.05 && v.tFrenoEspera === 0, "a medio recargar sigue disponible");
   correr(0.1, apretado);
-  assert.ok(v.tFrenoActivo > 2.8, "una pulsación activa el freno");
-  v.v = 12; correr(0.1, giroCero);
-  assert.equal(v.frenando, true, "suena mientras actúa");
-  correr(1, giroCero);
-  assert.ok(v.tFrenoActivo > 1.5, "sigue activo aunque se suelte");
-  correr(2, giroCero);
-  assert.ok(v.tFrenoActivo === 0 && v.tFrenoEspera > 2.8, "al terminar empieza la espera");
-  const velEspera = v.v;
-  correr(1, apretado);
-  assert.ok(v.tFrenoActivo === 0 && v.v > velEspera, "en la espera no frena");
-  correr(3, apretado);
-  assert.equal(v.tFrenoActivo, 0, "mantener apretado no lo reactiva");
-  correr(0.05, giroCero);
-  correr(0.05, apretado);
-  assert.ok(v.tFrenoActivo > 2.8, "una pulsación nueva lo reactiva");
-  assert.equal(v.freno, 100, "el pulso no gasta el freno");
+  assert.equal(v.frenando, true);
+  correr(4, apretado);
+  assert.ok(v.tFrenoTanque === 0 && v.tFrenoEspera > 4.2 && !v.frenando, "vacío queda bloqueado");
+  correr(5.2, apretado);
+  assert.ok(v.tFrenoTanque === 5 && v.tFrenoEspera === 0 && !v.frenando, "tras la espera se llena, pero seguir apretado no frena");
+  correr(0.05, suelto);
+  correr(0.1, apretado);
+  assert.equal(v.frenando, true, "pulsando de nuevo vuelve a frenar");
+  assert.equal(v.freno, 100, "el tanque no toca el desgaste de Sin frenos");
 }
 // El puesto sale del instante de cruce, no del orden en que se actualizan dentro del cuadro
 const fotoFinish = new Trafico(escenaSimple, { ...circuito, cruces: [] }, "carrera");

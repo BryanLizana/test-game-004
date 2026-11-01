@@ -1,4 +1,4 @@
-import { ANCHO } from "./pista.js?v=1.6.1";
+import { ANCHO } from "./pista.js?v=1.6.2";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
@@ -15,8 +15,8 @@ const FRENO = 1.5;                 // m/s² mientras dura (suave: solo ayuda)
 const VEL_MIN_FRENO = 4.5;         // por debajo de esto el freno ya no agarra (no se detiene)
 const DESGASTE_FRENO = 4;          // % por segundo de uso
 const ENFRIA_FRENO = 1.2;          // % por segundo que recupera cuando no se usa
-export const FRENO_ACTIVO = 3;     // s de freno por pulsación en Carrera
-export const FRENO_ESPERA = 3;     // s sin freno después
+export const FRENO_TANQUE = 5;     // s de freno disponibles en Carrera
+export const FRENO_ESPERA = 5;     // s bloqueado si se vacía
 export const ROCE_MOTOR = 0.06;    // el motor engranado frena un poco (proporcional a v)
 
 // Aceleración a lo largo de la calle sin freno: pendiente, rodadura, aire y motor engranado.
@@ -47,10 +47,10 @@ export class Vehiculo {
     this.balanceo = 0;      // rad visuales de la carrocería
     this.dano = 0;          // carrocería %
     this.freno = 100;       // vida del freno %
-    this.frenoPulso = false; // Carrera: una pulsación da un tramo de freno y luego hay que esperar
-    this.tFrenoActivo = 0;
+    this.frenoPulso = false; // Carrera: freno por tanque de segundos, ver frenaEsteTurno
+    this.tFrenoTanque = FRENO_TANQUE;
     this.tFrenoEspera = 0;
-    this.frenoPedido = false;
+    this.frenoSoltar = false;
     this.frenando = false;  // el freno está actuando en este paso (suena)
     this.estado = "ok";
     this.motivo = "";
@@ -66,20 +66,30 @@ export class Vehiculo {
 
   get kmh() { return this.v * 3.6; }
 
-  // Decide si este paso frena. El pulso solo arranca con una pulsación nueva:
-  // dejar el dedo apretado no vuelve a activarlo cuando termina la espera.
+  // Carrera: el freno es un tanque de segundos. Se gasta mientras se aprieta y se recarga al soltar,
+  // al mismo ritmo. Si se vacía, queda bloqueado y hay que soltar y volver a pulsar al terminar.
   frenaEsteTurno(dt, pulsado) {
     if (!this.frenoPulso) return pulsado;
-    if (this.tFrenoActivo > 0) {
-      this.tFrenoActivo -= dt;
-      if (this.tFrenoActivo <= 0) { this.tFrenoActivo = 0; this.tFrenoEspera = FRENO_ESPERA; }
-    } else if (this.tFrenoEspera > 0) {
+    if (this.tFrenoEspera > 0) {
       this.tFrenoEspera = Math.max(0, this.tFrenoEspera - dt);
-    } else if (pulsado && !this.frenoPedido) {
-      this.tFrenoActivo = FRENO_ACTIVO;
+      if (this.tFrenoEspera === 0) this.tFrenoTanque = FRENO_TANQUE;
+      if (!pulsado) this.frenoSoltar = false;
+      return false;
     }
-    this.frenoPedido = pulsado;
-    return this.tFrenoActivo > 0;
+    if (!pulsado) {
+      this.frenoSoltar = false;
+      this.tFrenoTanque = Math.min(FRENO_TANQUE, this.tFrenoTanque + dt);
+      return false;
+    }
+    if (this.frenoSoltar) return false;
+    if (this.v > VEL_MIN_FRENO) this.tFrenoTanque -= dt;   // sin velocidad el freno no agarra: no gasta
+    if (this.tFrenoTanque <= 0) {
+      this.tFrenoTanque = 0;
+      this.tFrenoEspera = FRENO_ESPERA;
+      this.frenoSoltar = true;
+      return false;
+    }
+    return true;
   }
 
   paso(dt, entrada, eventos) {

@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.1";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.2";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.1";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.1";
-import { Vehiculo, FRENO_ACTIVO, FRENO_ESPERA } from "./vehiculo.js?v=1.6.1";
-import { Trafico } from "./trafico.js?v=1.6.1";
-import { Controles } from "./controles.js?v=1.6.1";
-import { Sonido } from "./audio.js?v=1.6.1";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.1";
-import { crearLetreros } from "./ambiente.js?v=1.6.1";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.2";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.2";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.2";
+import { Trafico } from "./trafico.js?v=1.6.2";
+import { Controles } from "./controles.js?v=1.6.2";
+import { Sonido } from "./audio.js?v=1.6.2";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.2";
+import { crearLetreros } from "./ambiente.js?v=1.6.2";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -944,14 +944,14 @@ function cuentaFreno(v, dt) {
   el.classList.toggle("listo", !esperando);
 }
 
-// Carrera: verde que se vacía mientras frena, rojo que se llena mientras espera
+// Carrera: verde con lo que queda del tanque; rojo que se llena mientras está bloqueado
 function barraFrenoPulso(v) {
   const b = $("b-freno-vida");
-  const activo = v.tFrenoActivo > 0, esperando = v.tFrenoEspera > 0;
-  const pct = activo ? v.tFrenoActivo / FRENO_ACTIVO * 100 : esperando ? 100 - v.tFrenoEspera / FRENO_ESPERA * 100 : 100;
+  const esperando = v.tFrenoEspera > 0;
+  const pct = esperando ? 100 - v.tFrenoEspera / FRENO_ESPERA * 100 : v.tFrenoTanque / FRENO_TANQUE * 100;
   b.style.width = `${pct.toFixed(1)}%`;
   b.style.background = esperando ? "#ff3b3b" : "#3ecf5a";
-  for (const id of ["b-freno", "b-freno-izq"]) $(id).classList.toggle("activo", activo);
+  for (const id of ["b-freno", "b-freno-izq"]) $(id).classList.toggle("activo", v.frenando);
 }
 
 function revivir() {
@@ -962,7 +962,9 @@ function revivir() {
   v.dano = Math.min(v.dano, 60);
   v.suelo = pista.alturaLateral(v.d, v.s);
   v.acelLat = v.sacudida = v.ladoVuelco = 0;
-  v.tFrenoActivo = v.tFrenoEspera = 0;
+  v.tFrenoEspera = 0;
+  v.tFrenoTanque = FRENO_TANQUE;
+  v.frenoSoltar = false;
   v.raspando = v.derrapando = false;
   torito.userData.vuelco = 0;
   tInvulnerable = 2.5;
