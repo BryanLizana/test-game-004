@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=1.4.3";
-import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.4.3";
-import * as modelos from "./modelos.js?v=1.4.3";
-import { reserva } from "./reciclaje.js?v=1.4.3";
+import { ANCHO, VEREDA } from "./pista.js?v=1.5.0";
+import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.5.0";
+import * as modelos from "./modelos.js?v=1.5.0";
+import { reserva } from "./reciclaje.js?v=1.5.0";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -14,6 +14,8 @@ const GRITOS = {
   gato: ["¡Michi quita!"],
 };
 const elegir = (lista) => lista[(Math.random() * lista.length) | 0];
+const ALCANCE_AGENTE = 230;   // m; personas, animales y autos
+const ALCANCE_RIVAL = 340;
 
 // Mototaxis de la zona: azul, verde o amarillo, solos o combinados con blanco [carrocería, techo]
 const BLANCO = 0xf2f2ee;
@@ -56,6 +58,7 @@ export class Trafico {
     this.gritos = [];
     this.noticias = [];
     this.muestra = {};
+    this.posicionJugador = { x: 0, y: 0, z: 0, set(x, y, z) { this.x = x; this.y = y; this.z = z; return this; } };
     this.sembrar();
   }
 
@@ -77,6 +80,19 @@ export class Trafico {
       case "obra": return modelos.crearObra ? modelos.crearObra({ variante: extra.varianteObra ?? 0 }) : cajaRespaldo(0xb5653d, 3, 2, 1.2);
       case "desmonte": return modelos.crearDesmonte ? modelos.crearDesmonte({ tamano: 0.8 + Math.random() * 0.5 }) : cajaRespaldo(0x8b7d6b, 2.5, 2, 0.9);
     }
+  }
+
+  // Un modelo de cada clase: carga sus texturas y compila sus shaders antes de jugar.
+  // Sin esto, el primer bus o combi trababa la partida al aparecer.
+  tomarCatalogo() {
+    const clases = [["carro"], ["combi"], ["bus"], ["perro"], ["gato"], ["desmonte"], ["torito", { colorTorito: 0 }],
+      ...["senora", "viejo", "joven"].map((tipoPersona) => ["persona", { tipoPersona }]),
+      ...[0, 1, 2].map((varianteObra) => ["obra", { varianteObra }])];
+    return clases.map(([tipo, extra = {}]) => reserva.tomar(this.claveModelo(tipo, extra), () => this.crearModelo(tipo, extra)));
+  }
+
+  devolverCatalogo(lista) {
+    for (const modelo of lista) reserva.devolver(modelo, modelos.liberarRecursos);
   }
 
   // Clave de reciclaje: mismo tipo y variante se pueden reusar tal cual
@@ -200,6 +216,7 @@ export class Trafico {
     this.tiempo += dt;
     const p = this.pista;
     const carrera = this.modo === "carrera";
+    const enMundo = p.aMundo(veh.s, veh.d, 0, this.posicionJugador);
     const rivales = carrera ? this.agentes.filter((a) => a.rival && !a.termino) : [];
     // En Carrera el tráfico aparece delante del jugador o del rival que va primero
     const lider = rivales.reduce((m, a) => (a.s > m ? a.s : m), veh.s);
@@ -266,7 +283,13 @@ export class Trafico {
         for (const r of a.modelo.userData.ruedasTraseras || []) r.rotation.x -= giroRueda;
       }
       this.colocar(a);
-      if (carrera && !a.chocado) a.modelo.visible = Math.abs(a.s - veh.s) < 340;
+      // Lo que está lejos no se dibuja. Se mide en línea recta: en una curva cerrada, algo
+      // lejano por la calle puede estar cerca a la vista.
+      if (!a.chocado) {
+        const alcance = a.rival ? ALCANCE_RIVAL : ALCANCE_AGENTE;
+        const dx = a.modelo.position.x - enMundo.x, dz = a.modelo.position.z - enMundo.z;
+        a.modelo.visible = dx * dx + dz * dz < alcance * alcance;
+      }
 
       // Colisión con el jugador (cajas en s/d)
       if (!choque && !a.chocado && veh.estado === "ok" && veh.h < 0.8 && !veh.invulnerable) {

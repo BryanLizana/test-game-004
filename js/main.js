@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.4.3";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.5.0";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.4.3";
-import { GestorTramos } from "./tramos.js?v=1.4.3";
-import { Vehiculo } from "./vehiculo.js?v=1.4.3";
-import { Trafico } from "./trafico.js?v=1.4.3";
-import { Controles } from "./controles.js?v=1.4.3";
-import { Sonido } from "./audio.js?v=1.4.3";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.4.3";
-import { crearLetreros } from "./ambiente.js?v=1.4.3";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.5.0";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.5.0";
+import { Vehiculo } from "./vehiculo.js?v=1.5.0";
+import { Trafico } from "./trafico.js?v=1.5.0";
+import { Controles } from "./controles.js?v=1.5.0";
+import { Sonido } from "./audio.js?v=1.5.0";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.5.0";
+import { crearLetreros } from "./ambiente.js?v=1.5.0";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -465,22 +465,132 @@ function sombrasBaratas() {
   sombrasCadaDos = true;
 }
 
-// Compila de una vez los shaders de todos los materiales de la pista (normales e instanciados).
-// Con la carga por tramos, un material nuevo (p. ej. el primer guardavía) causaba un tirón al aparecer.
-function precompilarMateriales() {
-  const geo = new THREE.PlaneGeometry(0.01, 0.01), temporales = [];
-  const materiales = new Set(Object.values(mat).flat().filter((m) => m && m.isMaterial && !m.isLineBasicMaterial));
-  for (const m of materiales) {
-    const normal = new THREE.Mesh(geo, m), instanciado = new THREE.InstancedMesh(geo, m, 1);
-    escena.add(normal, instanciado);
-    temporales.push(normal, instanciado);
+// ---------- Preparación antes de jugar: texturas, shaders y primer cuadro ----------
+// Materiales de la pista que se dibujan con instancias (el resto, como mallas normales).
+const INSTANCIADOS = new Set(["llantaPintada", "posteMadera", "poste", "foco", "charco", "ropa", "frazada", "cilindro",
+  "cruz", "tanque", "fierro", "follaje", "corteza", "madera", "banca", "rompemuelle"]);
+const CON_COLOR = new Set(["llantaPintada", "follaje"]);   // instancias con color propio
+const TAMBIEN_MALLA = new Set(["madera"]);
+const SIN_USO = new Set(["prendas"]);
+
+function esperarTexturas(alAvance) {
+  return new Promise((listo) => {
+    const gestor = THREE.DefaultLoadingManager;
+    const fin = () => { clearTimeout(limite); gestor.onLoad = gestor.onProgress = () => {}; listo(); };
+    const limite = setTimeout(fin, 30000);   // una textura colgada no debe impedir jugar
+    gestor.onProgress = (_url, cargadas, total) => alAvance(cargadas / total);
+    gestor.onLoad = fin;
+  });
+}
+
+// Una copia mínima por cada combinación que cambia el shader. Son solo para compilar.
+function variantesDeShader() {
+  const variantes = new Map();
+  const agregar = (crear, material, instancias, color) => {
+    const clave = `${[].concat(material).map((m) => m.uuid).join()}|${instancias}|${color}`;
+    if (!variantes.has(clave)) variantes.set(clave, crear());
+  };
+  const plano = new THREE.PlaneGeometry(0.01, 0.01);
+  const instancia = (geo, material, color) => {
+    const o = new THREE.InstancedMesh(geo, material, 1);
+    if (color) o.instanceColor = new THREE.InstancedBufferAttribute(new Float32Array(3), 3);
+    return o;
+  };
+  for (const [nombre, valor] of Object.entries(mat)) {
+    if (SIN_USO.has(nombre)) continue;
+    const enInstancias = INSTANCIADOS.has(nombre), color = CON_COLOR.has(nombre);
+    for (const m of [].concat(valor)) {
+      if (!m || !m.isMaterial) continue;
+      if (m.isLineBasicMaterial) { agregar(() => new THREE.LineSegments(plano, m), m, false, false); continue; }
+      if (!enInstancias || TAMBIEN_MALLA.has(nombre)) agregar(() => new THREE.Mesh(plano, m), m, false, false);
+      if (enInstancias) agregar(() => instancia(plano, m, color), m, true, color);
+    }
   }
-  renderer.compile(escena, camara);
-  for (const t of temporales) {
-    escena.remove(t);
-    if (t.isInstancedMesh) t.dispose();
+  const copiar = (o) => {
+    if (o.isInstancedMesh) agregar(() => instancia(o.geometry, o.material, !!o.instanceColor), o.material, true, !!o.instanceColor);
+    else if (o.isMesh || o.isLine || o.isPoints) agregar(() => new o.constructor(o.geometry, o.material), o.material, false, false);
+  };
+  escena.traverse(copiar);
+  for (const parte of partesDeChozas()) agregar(() => instancia(parte.geometria, parte.material, false), parte.material, true, false);
+  const catalogo = trafico.tomarCatalogo();
+  for (const modelo of catalogo) modelo.traverse(copiar);
+  return { variantes: [...variantes.values()], catalogo };
+}
+
+const pausaCorta = () => new Promise((listo) => setTimeout(listo));
+
+// Sin KHR_parallel_shader_compile la compilación bloquea, así que va de a un shader y el botón
+// sigue avanzando. Con la extensión se envían lotes y el navegador trabaja en paralelo.
+async function compilarShaders(alAvance) {
+  const paralelo = renderer.extensions.has("KHR_parallel_shader_compile");
+  const { variantes, catalogo } = variantesDeShader();
+  const lote = paralelo ? 12 : 1;
+  for (let i = 0; i < variantes.length; i += lote) {
+    const parte = new THREE.Scene();
+    for (const o of variantes.slice(i, i + lote)) parte.add(o);
+    if (paralelo) await renderer.compileAsync(parte, camara, escena);
+    else {
+      renderer.compile(parte, camara, escena);
+      // Espera aquí el enlace que de otro modo congelaría el primer cuadro
+      parte.traverse((o) => {
+        for (const m of [].concat(o.material || [])) renderer.properties.get(m).currentProgram?.getUniforms();
+      });
+    }
+    alAvance(Math.min(1, (i + lote) / variantes.length));
+    await pausaCorta();
   }
-  geo.dispose();
+  trafico.devolverCatalogo(catalogo);
+  return variantes;
+}
+
+// Un cuadro con todas las variantes a la vista del sol: compila también los shaders de sombra
+// y sube lo que falte. Son planos diminutos y solo existen en este cuadro.
+function primerCuadro(variantes) {
+  const grupo = new THREE.Group();
+  for (const o of variantes) {
+    if (!o.isMesh) continue;
+    o.castShadow = true;
+    o.frustumCulled = false;
+    grupo.add(o);
+  }
+  grupo.position.copy(sol.target.position);
+  escena.add(grupo);
+  renderer.render(escena, camara);
+  escena.remove(grupo);
+  for (const o of variantes) if (o.isInstancedMesh) o.dispose();
+}
+
+// Sube las texturas a la tarjeta antes de jugar: si no, cada una traba el cuadro en que aparece.
+async function subirTexturas() {
+  const texturas = new Set();
+  const revisar = (m) => { if (m && m.isMaterial) for (const v of Object.values(m)) if (v && v.isTexture && v.image) texturas.add(v); };
+  for (const valor of Object.values(mat)) for (const m of [].concat(valor)) revisar(m);
+  escena.traverse((o) => { for (const m of [].concat(o.material || [])) revisar(m); });
+  for (const t of texturas) { renderer.initTexture(t); await pausaCorta(); }
+}
+
+let preparando = true, enCurso = false, repetir = false;
+async function prepararRender() {
+  if (enCurso) { repetir = true; return; }   // cambiaron la hora a media preparación
+  enCurso = true;
+  preparando = true;
+  const boton = $("btn-jugar");
+  boton.disabled = true;
+  const mostrar = (texto, parte) => { boton.textContent = `${texto} ${Math.round(parte * 100)}%`; };
+  mostrar("PREPARANDO", 0);
+  try {
+    const variantes = await compilarShaders((p) => mostrar("PREPARANDO", p));
+    await subirTexturas();
+    primerCuadro(variantes);
+  } catch (error) {
+    console.warn("La preparación se cortó; el juego compilará al vuelo.", error);
+  }
+  enCurso = false;
+  if (repetir) { repetir = false; return prepararRender(); }
+  preparando = false;
+  ultimo = performance.now();
+  boton.textContent = "JUGAR";
+  boton.disabled = false;
 }
 
 // ---------- Estado de juego ----------
@@ -716,7 +826,7 @@ function bucle(ahora) {
   requestAnimationFrame(bucle);
   const dt = Math.min(0.05, (ahora - ultimo) / 1000);
   ultimo = ahora;
-  if (!vehiculo || document.hidden) return;
+  if (!vehiculo || document.hidden || preparando) return;
 
   if (estado === "jugando" || estado === "terminando") {
     if (estado === "jugando" && tRevivir > 0 && (tRevivir -= dt) <= 0) revivir();
@@ -958,6 +1068,7 @@ $("btn-hora").addEventListener("click", () => {
   noche = !noche;
   try { localStorage.setItem("noche", noche ? "1" : "0"); } catch (_) { /* sin almacenamiento */ }
   aplicarHora();
+  prepararRender();                               // día y noche usan shaders distintos
 });
 
 
@@ -1054,12 +1165,12 @@ for (const id of ["b-freno", "b-freno-izq", "zona-freno"]) {
 // Escena de fondo detrás del menú mientras se juega la primera vez
 nuevaPartida();
 aplicarHora();
-precompilarMateriales();
 mostrarVibracion();
 $("version-pausa").textContent = $("version").textContent;
-$("btn-jugar").disabled = false;
-$("btn-jugar").textContent = "JUGAR";
 requestAnimationFrame(bucle);
+// El catálogo se toma antes de esperar: así sus texturas entran en la misma carga.
+trafico.devolverCatalogo(trafico.tomarCatalogo());
+esperarTexturas((p) => { $("btn-jugar").textContent = `CARGANDO ${Math.round(p * 100)}%`; }).then(prepararRender);
 
 // Acceso para depuración desde la consola
 window.__juego = { get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, escena, camara, renderer, THREE, nuevaPartida };

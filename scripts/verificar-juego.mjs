@@ -162,7 +162,7 @@ assert.equal(controles.botones.freno, true, "centrar no suelta el freno");
 controles.limpiar();
 
 const modeloSimple = () => ({
-  userData: {}, position: { set() {} }, rotation: { x: 0, y: 0, z: 0, set() {} }, visible: true,
+  userData: {}, position: { x: 0, y: 0, z: 0, set(x, y, z) { Object.assign(this, { x, y, z }); } }, rotation: { x: 0, y: 0, z: 0, set() {} }, visible: true,
 });
 const modelosSimple = Object.fromEntries(["crearCarro", "crearTorito", "crearPersona", "crearPerro", "crearGato", "crearObra", "crearDesmonte"].map((k) => [k, modeloSimple]));
 modelosSimple.animarCaminar = modelosSimple.liberarRecursos = () => {};
@@ -194,6 +194,13 @@ for (let i = 0; i < 10000; i++) {
 assert.ok(subieron > 0 && caminantes > 0, "en Carrera suben autos y personas");
 assert.ok(rivalesDe(carreraBots).every((a) => a.termino && a.tiempoLlegada > 0));
 assert.ok(carreraBots.puesto(jugador) >= 1 && carreraBots.puesto(jugador) <= 4);
+// Lo lejano no se dibuja, y se mide en línea recta
+const alcance = new Trafico(escenaSimple, { ...circuito, cruces: [] }, "sinFrenos");
+const cerca = alcance.agregar("carro", 100, 2, 0, { estacionado: true });
+const remoto = alcance.agregar("carro", 600, 2, 0, { estacionado: true });
+alcance.actualizar(1 / 60, { s: 90, d: 1.75, v: 5, h: 0, estado: "ok", invulnerable: true });
+assert.equal(cerca.modelo.visible, true);
+assert.equal(remoto.modelo.visible, false);
 // El puesto sale del instante de cruce, no del orden en que se actualizan dentro del cuadro
 const fotoFinish = new Trafico(escenaSimple, { ...circuito, cruces: [] }, "carrera");
 const rivalMeta = rivalesDe(fotoFinish)[0];

@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { CHUNK } from "./pista.js?v=1.4.3";
-import { crearChoza, liberarRecursos } from "./modelos.js?v=1.4.3";
-import { reserva } from "./reciclaje.js?v=1.4.3";
+import { CHUNK } from "./pista.js?v=1.5.0";
+import { crearChoza, liberarRecursos } from "./modelos.js?v=1.5.0";
+import { reserva } from "./reciclaje.js?v=1.5.0";
 
 // Carga por tramos: solo existen los bloques cercanos al torito. Al avanzar se piden los de
 // adelante a un Web Worker (que calcula la geometría fuera del hilo principal), se montan al
@@ -25,7 +25,7 @@ let obrero = null, obreroFallo = false;
 function obtenerObrero() {
   if (obrero || obreroFallo || typeof Worker === "undefined") return obrero;
   try {
-    obrero = new Worker(new URL("./obrero-pista.js?v=1.4.3", import.meta.url), { type: "module" });
+    obrero = new Worker(new URL("./obrero-pista.js?v=1.5.0", import.meta.url), { type: "module" });
     obrero.addEventListener("error", () => { obreroFallo = true; obrero = null; });
   } catch (_) {
     obreroFallo = true;
@@ -55,6 +55,31 @@ export function medidasChoza() {
   }
   return medidas;
 }
+
+// Cada choza son unas 7 mallas. Se dibujan con una instancia por pieza y por bloque, no choza por choza.
+const plantillasChoza = new Map();
+const RADIO_PIEZA_CHICA = 1.5;   // puerta, ventana, tanque: de lejos no se ven
+function plantillaChoza(variante) {
+  let partes = plantillasChoza.get(variante);
+  if (partes) return partes;
+  partes = [];
+  const choza = crearChoza({ variante });
+  choza.updateMatrixWorld(true);
+  choza.traverse((o) => {
+    if (!o.isMesh) return;
+    if (!o.geometry.boundingSphere) o.geometry.computeBoundingSphere();
+    partes.push({
+      geometria: o.geometry, material: o.material, matriz: o.matrixWorld.clone(),
+      sombra: o.castShadow, recibe: o.receiveShadow, chica: o.geometry.boundingSphere.radius < RADIO_PIEZA_CHICA,
+    });
+  });
+  plantillasChoza.set(variante, partes);
+  return partes;
+}
+export const partesDeChozas = () => [0, 1, 2].flatMap(plantillaChoza);
+
+const mBase = new THREE.Matrix4(), mParte = new THREE.Matrix4(), qGiro = new THREE.Quaternion();
+const vPos = new THREE.Vector3(), vEscala = new THREE.Vector3(), ejeY = new THREE.Vector3(0, 1, 0);
 
 export class GestorTramos {
   constructor(pista, escena, mat, semilla) {
@@ -234,15 +259,29 @@ export class GestorTramos {
       grupo.add(cables);
       grupo.userData.detalles.push(cables);
     }
-    for (const mo of datos.modelos) {
-      const choza = reserva.tomar(`choza|${mo.variante}`, () => crearChoza({ variante: mo.variante }));
-      choza.position.fromArray(mo.pos);
-      choza.rotation.set(0, mo.rotY, 0);
-      choza.scale.fromArray(mo.escala);
-      grupo.add(choza);
-      grupo.userData.modelos.push(choza);
-    }
+    this.montarChozas(grupo, datos.modelos);
     return grupo;
+  }
+
+  montarChozas(grupo, chozas) {
+    const porVariante = new Map();
+    for (const mo of chozas) {
+      if (!porVariante.has(mo.variante)) porVariante.set(mo.variante, []);
+      porVariante.get(mo.variante).push(mo);
+    }
+    for (const [variante, lista] of porVariante) {
+      for (const parte of plantillaChoza(variante)) {
+        const inst = new THREE.InstancedMesh(parte.geometria, parte.material, lista.length);
+        lista.forEach((mo, i) => {
+          mBase.compose(vPos.fromArray(mo.pos), qGiro.setFromAxisAngle(ejeY, mo.rotY), vEscala.fromArray(mo.escala));
+          inst.setMatrixAt(i, mParte.multiplyMatrices(mBase, parte.matriz));
+        });
+        inst.castShadow = parte.sombra;
+        inst.receiveShadow = parte.recibe;
+        grupo.add(inst);
+        if (parte.chica) grupo.userData.detalles.push(inst);
+      }
+    }
   }
 
   // Devuelve los modelos a la reserva y libera solo la geometría propia del bloque
