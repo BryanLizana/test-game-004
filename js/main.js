@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.2";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.3";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.2";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.2";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.2";
-import { Trafico } from "./trafico.js?v=1.6.2";
-import { Controles } from "./controles.js?v=1.6.2";
-import { Sonido } from "./audio.js?v=1.6.2";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.2";
-import { crearLetreros } from "./ambiente.js?v=1.6.2";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.3";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.3";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.3";
+import { Trafico } from "./trafico.js?v=1.6.3";
+import { Controles } from "./controles.js?v=1.6.3";
+import { Sonido } from "./audio.js?v=1.6.3";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.3";
+import { crearLetreros } from "./ambiente.js?v=1.6.3";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -638,7 +638,7 @@ function nuevaPartida() {
   tramos = new GestorTramos(pista, escena, mat, semilla);
   pista.construirFinal(escena);
   vehiculo = new Vehiculo(pista);
-  vehiculo.frenoPulso = modoJuego === "carrera";
+  vehiculo.frenoPulso = true;
   tramos.precargar(vehiculo.s);
   trafico = new Trafico(escena, pista, modoJuego);
   tiempoPartida = 0;
@@ -930,7 +930,7 @@ function perderVida(motivo) {
   tRevivir = 1.6;
 }
 
-// Carrera: cuenta regresiva hasta que se pueda volver a frenar; el 0 avisa que ya está listo
+// Cuenta regresiva hasta que se pueda volver a frenar; el 0 avisa que ya está listo
 let tFrenoListo = 0;
 function cuentaFreno(v, dt) {
   const el = $("freno-cuenta");
@@ -944,7 +944,7 @@ function cuentaFreno(v, dt) {
   el.classList.toggle("listo", !esperando);
 }
 
-// Carrera: verde con lo que queda del tanque; rojo que se llena mientras está bloqueado
+// Verde con lo que queda del tanque; rojo que se llena mientras está bloqueado
 function barraFrenoPulso(v) {
   const b = $("b-freno-vida");
   const esperando = v.tFrenoEspera > 0;

@@ -1,4 +1,4 @@
-import { ANCHO } from "./pista.js?v=1.6.2";
+import { ANCHO } from "./pista.js?v=1.6.3";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
@@ -15,7 +15,8 @@ const FRENO = 1.5;                 // m/s² mientras dura (suave: solo ayuda)
 const VEL_MIN_FRENO = 4.5;         // por debajo de esto el freno ya no agarra (no se detiene)
 const DESGASTE_FRENO = 4;          // % por segundo de uso
 const ENFRIA_FRENO = 1.2;          // % por segundo que recupera cuando no se usa
-export const FRENO_TANQUE = 5;     // s de freno disponibles en Carrera
+export const FRENO_TANQUE = 5;     // s de freno disponibles
+const FRENO_RECARGA = 1 / 1.5;     // s de tanque que recupera por segundo sin frenar
 export const FRENO_ESPERA = 5;     // s bloqueado si se vacía
 export const ROCE_MOTOR = 0.06;    // el motor engranado frena un poco (proporcional a v)
 
@@ -47,7 +48,7 @@ export class Vehiculo {
     this.balanceo = 0;      // rad visuales de la carrocería
     this.dano = 0;          // carrocería %
     this.freno = 100;       // vida del freno %
-    this.frenoPulso = false; // Carrera: freno por tanque de segundos, ver frenaEsteTurno
+    this.frenoPulso = false; // freno por tanque de segundos, ver frenaEsteTurno
     this.tFrenoTanque = FRENO_TANQUE;
     this.tFrenoEspera = 0;
     this.frenoSoltar = false;
@@ -66,8 +67,8 @@ export class Vehiculo {
 
   get kmh() { return this.v * 3.6; }
 
-  // Carrera: el freno es un tanque de segundos. Se gasta mientras se aprieta y se recarga al soltar,
-  // al mismo ritmo. Si se vacía, queda bloqueado y hay que soltar y volver a pulsar al terminar.
+  // El freno es un tanque de segundos. Se gasta mientras se aprieta y se recarga más lento al soltar.
+  // Si se vacía, queda bloqueado y hay que soltar y volver a pulsar al terminar.
   frenaEsteTurno(dt, pulsado) {
     if (!this.frenoPulso) return pulsado;
     if (this.tFrenoEspera > 0) {
@@ -78,7 +79,7 @@ export class Vehiculo {
     }
     if (!pulsado) {
       this.frenoSoltar = false;
-      this.tFrenoTanque = Math.min(FRENO_TANQUE, this.tFrenoTanque + dt);
+      this.tFrenoTanque = Math.min(FRENO_TANQUE, this.tFrenoTanque + FRENO_RECARGA * dt);
       return false;
     }
     if (this.frenoSoltar) return false;

@@ -224,7 +224,7 @@ const remoto = alcance.agregar("carro", 600, 2, 0, { estacionado: true });
 alcance.actualizar(1 / 60, { s: 90, d: 1.75, v: 5, h: 0, estado: "ok", invulnerable: true });
 assert.equal(cerca.modelo.visible, true);
 assert.equal(remoto.modelo.visible, false);
-// Freno de Carrera: tanque de 5 s que se recarga al soltar; si se vacía, 5 s bloqueado
+// Freno de tanque: 5 s que se recargan en 7,5 s al soltar; si se vacía, 5 s bloqueado
 {
   const v = new Vehiculo(pistaLisa(0.2));
   v.frenoPulso = true;
@@ -232,15 +232,17 @@ assert.equal(remoto.modelo.visible, false);
   const correr = (segundos, entrada) => { for (let i = 0; i < segundos * 120; i++) { v.s = 100; v.v = 12; v.paso(1 / 120, entrada, []); } };
   correr(4, apretado);
   assert.ok(Math.abs(v.tFrenoTanque - 1) < 0.02 && v.frenando, "se gasta mientras se aprieta y frena");
-  correr(4, suelto);
-  assert.ok(v.tFrenoTanque > 4.95 && !v.frenando, "al soltar recupera lo gastado");
+  correr(3, suelto);
+  assert.ok(Math.abs(v.tFrenoTanque - 3) < 0.05 && !v.frenando, "recarga un 50 % más lento de lo que gasta");
+  correr(3, suelto);
+  assert.ok(v.tFrenoTanque > 4.95, "al soltar recupera lo gastado");
   correr(2, apretado);
   correr(0.5, suelto);
-  assert.ok(Math.abs(v.tFrenoTanque - 3.5) < 0.05 && v.tFrenoEspera === 0, "a medio recargar sigue disponible");
+  assert.ok(Math.abs(v.tFrenoTanque - 3.33) < 0.05 && v.tFrenoEspera === 0, "a medio recargar sigue disponible");
   correr(0.1, apretado);
   assert.equal(v.frenando, true);
   correr(4, apretado);
-  assert.ok(v.tFrenoTanque === 0 && v.tFrenoEspera > 4.2 && !v.frenando, "vacío queda bloqueado");
+  assert.ok(v.tFrenoTanque === 0 && v.tFrenoEspera > 4 && !v.frenando, "vacío queda bloqueado");
   correr(5.2, apretado);
   assert.ok(v.tFrenoTanque === 5 && v.tFrenoEspera === 0 && !v.frenando, "tras la espera se llena, pero seguir apretado no frena");
   correr(0.05, suelto);
