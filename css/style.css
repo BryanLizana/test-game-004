@@ -93,6 +93,12 @@ html, body {
 }
 @keyframes carga-cuadros { to { transform: translateX(-100%); } }
 
+#btn-jugar:disabled {
+  opacity: 1;
+  color: #fff;
+  background: linear-gradient(90deg, #c8102e var(--avance, 0%), rgba(45, 12, 18, 0.85) var(--avance, 0%));
+  text-shadow: 0 1px 3px rgba(0, 0, 0, 0.8);
+}
 .acciones { position: relative; display: flex; flex-direction: column; align-items: center; gap: 10px; }
 .opciones { display: flex; gap: 8px; flex-wrap: wrap; justify-content: center; }
 

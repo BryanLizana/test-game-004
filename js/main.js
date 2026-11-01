@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.5.3";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.5.4";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.5.3";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.5.3";
-import { Vehiculo } from "./vehiculo.js?v=1.5.3";
-import { Trafico } from "./trafico.js?v=1.5.3";
-import { Controles } from "./controles.js?v=1.5.3";
-import { Sonido } from "./audio.js?v=1.5.3";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.5.3";
-import { crearLetreros } from "./ambiente.js?v=1.5.3";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.5.4";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.5.4";
+import { Vehiculo } from "./vehiculo.js?v=1.5.4";
+import { Trafico } from "./trafico.js?v=1.5.4";
+import { Controles } from "./controles.js?v=1.5.4";
+import { Sonido } from "./audio.js?v=1.5.4";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.5.4";
+import { crearLetreros } from "./ambiente.js?v=1.5.4";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -569,19 +569,28 @@ async function subirTexturas() {
   for (const t of texturas) { renderer.initTexture(t); await pausaCorta(); }
 }
 
+// Una sola barra de 0 a 100 %. Las texturas ocupan el primer tramo solo en la carga inicial.
+const PARTE_TEXTURAS = 0.3, FIN_SHADERS = 0.95;
+function mostrarCarga(parte) {
+  const boton = $("btn-jugar");
+  boton.textContent = `CARGANDO ${Math.round(parte * 100)}%`;
+  boton.style.setProperty("--avance", `${(parte * 100).toFixed(1)}%`);
+}
+
 let preparando = true, enCurso = false, repetir = false, partidaLista = true;
-async function prepararRender() {
+async function prepararRender(desde = 0) {
   if (enCurso) { repetir = true; return; }   // cambiaron la hora a media preparación
   enCurso = true;
   preparando = true;
   const boton = $("btn-jugar");
   boton.disabled = true;
-  const mostrar = (texto, parte) => { boton.textContent = `${texto} ${Math.round(parte * 100)}%`; };
-  mostrar("PREPARANDO", 0);
+  mostrarCarga(desde);
   $("carga").hidden = false;
   try {
-    const variantes = await compilarShaders((p) => mostrar("PREPARANDO", p));
+    const variantes = await compilarShaders((p) => mostrarCarga(desde + (FIN_SHADERS - desde) * p));
     await subirTexturas();
+    mostrarCarga(1);
+    await pausaCorta();
     primerCuadro(variantes);
   } catch (error) {
     console.warn("La preparación se cortó; el juego compilará al vuelo.", error);
@@ -1077,7 +1086,7 @@ $("btn-hora").addEventListener("click", () => {
   noche = !noche;
   try { localStorage.setItem("noche", noche ? "1" : "0"); } catch (_) { /* sin almacenamiento */ }
   aplicarHora();
-  prepararRender();                               // día y noche usan shaders distintos
+  prepararRender(0);                               // día y noche usan shaders distintos
 });
 
 
@@ -1179,7 +1188,7 @@ $("version-pausa").textContent = $("version").textContent;
 requestAnimationFrame(bucle);
 // El catálogo se toma antes de esperar: así sus texturas entran en la misma carga.
 trafico.devolverCatalogo(trafico.tomarCatalogo());
-esperarTexturas((p) => { $("btn-jugar").textContent = `CARGANDO ${Math.round(p * 100)}%`; }).then(prepararRender);
+esperarTexturas((p) => mostrarCarga(p * PARTE_TEXTURAS)).then(() => prepararRender(PARTE_TEXTURAS));
 
 // Acceso para depuración desde la consola
 window.__juego = { get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, escena, camara, renderer, THREE, nuevaPartida };
