@@ -74,6 +74,7 @@ node scripts/verificar-juego.mjs
 | `js/modelos.js` | Modelos 3D procedurales (se ven en `pruebas/modelos.html`) |
 | `js/controles.js`, `js/audio.js` | Entrada y sonido |
 | `scripts/version.mjs` | Actualiza la versión en todos los archivos: `node scripts/version.mjs X.Y.Z` |
+| `scripts/logo-titulo.mjs` | Genera el logo del título en `assets/img/` |
 
 ## Licencia
 
