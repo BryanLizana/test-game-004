@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.6";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.7";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.6";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.6";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.6";
-import { Trafico } from "./trafico.js?v=1.6.6";
-import { Controles } from "./controles.js?v=1.6.6";
-import { Sonido } from "./audio.js?v=1.6.6";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.6";
-import { crearLetreros } from "./ambiente.js?v=1.6.6";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.7";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.7";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.7";
+import { Trafico } from "./trafico.js?v=1.6.7";
+import { Controles } from "./controles.js?v=1.6.7";
+import { Sonido } from "./audio.js?v=1.6.7";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.7";
+import { crearLetreros } from "./ambiente.js?v=1.6.7";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -948,7 +948,7 @@ function cuentaFreno(v, dt) {
 function barraFrenoPulso(v) {
   const b = $("b-freno-vida");
   const esperando = v.tFrenoEspera > 0;
-  const pct = esperando ? 100 - v.tFrenoEspera / FRENO_ESPERA * 100 : v.tFrenoTanque / FRENO_TANQUE * 100;
+  const pct = v.tFrenoTanque / FRENO_TANQUE * 100;
   b.style.width = `${pct.toFixed(1)}%`;
   b.style.background = esperando ? "#ff3b3b" : "#3ecf5a";
   for (const id of ["b-freno", "b-freno-izq"]) $(id).classList.toggle("activo", v.frenando);

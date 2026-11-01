@@ -1,4 +1,4 @@
-import { ANCHO } from "./pista.js?v=1.6.6";
+import { ANCHO } from "./pista.js?v=1.6.7";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
@@ -16,7 +16,7 @@ const VEL_MIN_FRENO = 4.5;         // por debajo de esto el freno ya no agarra (
 const DESGASTE_FRENO = 4;          // % por segundo de uso
 const ENFRIA_FRENO = 1.2;          // % por segundo que recupera cuando no se usa
 export const FRENO_TANQUE = 5;     // s de freno disponibles
-const FRENO_RECARGA = 1 / 2.25;    // s de tanque que recupera por segundo sin frenar
+const FRENO_RECARGA = 1 / 3.375;   // s de tanque que recupera por segundo sin frenar
 export const FRENO_ESPERA = 5;     // s bloqueado si se vacía
 export const ROCE_MOTOR = 0.06;    // el motor engranado frena un poco (proporcional a v)
 
@@ -68,12 +68,13 @@ export class Vehiculo {
   get kmh() { return this.v * 3.6; }
 
   // El freno es un tanque de segundos. Se gasta mientras se aprieta y se recarga más lento al soltar.
-  // Si se vacía, queda bloqueado y hay que soltar y volver a pulsar al terminar.
+  // Si se vacía, queda bloqueado (recargando al mismo ritmo) y hay que soltar y volver a pulsar al terminar.
   frenaEsteTurno(dt, pulsado) {
     if (!this.frenoPulso) return pulsado;
     if (this.tFrenoEspera > 0) {
-      this.tFrenoEspera = Math.max(0, this.tFrenoEspera - dt);
-      if (this.tFrenoEspera === 0) this.tFrenoTanque = FRENO_TANQUE;
+      const espera = Math.min(dt, this.tFrenoEspera);
+      this.tFrenoEspera -= espera;
+      this.tFrenoTanque = Math.min(FRENO_TANQUE, this.tFrenoTanque + FRENO_RECARGA * espera);
       if (!pulsado) this.frenoSoltar = false;
       return false;
     }

@@ -224,7 +224,7 @@ const remoto = alcance.agregar("carro", 600, 2, 0, { estacionado: true });
 alcance.actualizar(1 / 60, { s: 90, d: 1.75, v: 5, h: 0, estado: "ok", invulnerable: true });
 assert.equal(cerca.modelo.visible, true);
 assert.equal(remoto.modelo.visible, false);
-// Freno de tanque: 5 s que se recargan en 11,25 s al soltar; si se vacía, 5 s bloqueado
+// Freno de tanque: 5 s que se recargan en 16,875 s; si se vacía, 5 s bloqueado recargando al mismo ritmo
 {
   const v = new Vehiculo(pistaLisa(0.2));
   v.frenoPulso = true;
@@ -233,18 +233,18 @@ assert.equal(remoto.modelo.visible, false);
   correr(4, apretado);
   assert.ok(Math.abs(v.tFrenoTanque - 1) < 0.02 && v.frenando, "se gasta mientras se aprieta y frena");
   correr(3, suelto);
-  assert.ok(Math.abs(v.tFrenoTanque - 7 / 3) < 0.05 && !v.frenando, "recarga 2,25 veces más lento de lo que gasta");
-  correr(6.1, suelto);
+  assert.ok(Math.abs(v.tFrenoTanque - 17 / 9) < 0.05 && !v.frenando, "recarga 3,375 veces más lento de lo que gasta");
+  correr(10.6, suelto);
   assert.ok(v.tFrenoTanque > 4.95, "al soltar recupera lo gastado");
   correr(2, apretado);
   correr(0.5, suelto);
-  assert.ok(Math.abs(v.tFrenoTanque - 3.22) < 0.05 && v.tFrenoEspera === 0, "a medio recargar sigue disponible");
+  assert.ok(Math.abs(v.tFrenoTanque - 3.15) < 0.05 && v.tFrenoEspera === 0, "a medio recargar sigue disponible");
   correr(0.1, apretado);
   assert.equal(v.frenando, true);
   correr(4, apretado);
-  assert.ok(v.tFrenoTanque === 0 && v.tFrenoEspera > 4 && !v.frenando, "vacío queda bloqueado");
+  assert.ok(v.tFrenoEspera > 4 && Math.abs(v.tFrenoTanque - (5 - v.tFrenoEspera) / 3.375) < 0.01 && !v.frenando, "vacío queda bloqueado y recarga al ritmo normal");
   correr(5.2, apretado);
-  assert.ok(v.tFrenoTanque === 5 && v.tFrenoEspera === 0 && !v.frenando, "tras la espera se llena, pero seguir apretado no frena");
+  assert.ok(Math.abs(v.tFrenoTanque - 5 / 3.375) < 0.01 && v.tFrenoEspera === 0 && !v.frenando, "la espera solo recarga sus 5 s, y seguir apretado no frena");
   correr(0.05, suelto);
   correr(0.1, apretado);
   assert.equal(v.frenando, true, "pulsando de nuevo vuelve a frenar");
