@@ -36,13 +36,14 @@ html, body {
 #fin, #pausa { background: rgba(20, 10, 10, 0.7); justify-content: center; gap: 4vh; }
 
 .titulo h1 {
-  font-size: clamp(42px, min(13vw, 14vh), 110px);
+  font-size: clamp(34px, min(12vw, 11vh), 96px);
   line-height: 0.95;
   color: #ffd200;
   -webkit-text-stroke: 3px #7a0010;
   text-shadow: 0 6px 0 #c8102e, 0 10px 18px rgba(0, 0, 0, 0.5);
   transform: rotate(-3deg);
 }
+@media (max-height: 480px) { .titulo h1 br { display: none; } }
 .titulo .sub {
   margin-top: 10px;
   font-size: clamp(16px, 4.5vw, 26px);

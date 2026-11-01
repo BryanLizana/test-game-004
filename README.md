@@ -1,10 +1,10 @@
-# ¡Sin Frenos! — Torito en bajada
+# Torito sin control
 
 Te cortaron el cable del freno. Baja un cerro de Lima en mototaxi, esquiva lo que venga y llega entero hasta abajo. Simulador 3D para navegador, en celular o PC.
 
 **[▶ Jugar ahora](https://bryanlizana.github.io/test-game-004/)** — no requiere instalación.
 
-![Pantalla de inicio de ¡Sin Frenos!](assets/capturas/inicio.jpg)
+![Pantalla de inicio de Torito sin control](assets/capturas/inicio.jpg)
 
 | Primera persona | Tercera persona |
 |---|---|

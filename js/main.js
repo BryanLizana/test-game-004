@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.4";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.5";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.4";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.4";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.4";
-import { Trafico } from "./trafico.js?v=1.6.4";
-import { Controles } from "./controles.js?v=1.6.4";
-import { Sonido } from "./audio.js?v=1.6.4";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.4";
-import { crearLetreros } from "./ambiente.js?v=1.6.4";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.5";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.5";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.5";
+import { Trafico } from "./trafico.js?v=1.6.5";
+import { Controles } from "./controles.js?v=1.6.5";
+import { Sonido } from "./audio.js?v=1.6.5";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.5";
+import { crearLetreros } from "./ambiente.js?v=1.6.5";
 
 const elementos = new Map();
 const $ = (id) => {
