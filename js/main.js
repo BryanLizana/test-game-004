@@ -3,6 +3,7 @@ import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.9";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
 import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.9";
 import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.9";
+import { nivelDe } from "./niveles.js?v=1.6.9";
 import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.9";
 import { Trafico } from "./trafico.js?v=1.6.9";
 import { Controles } from "./controles.js?v=1.6.9";
@@ -611,6 +612,8 @@ let pista, tramos, vehiculo, trafico;
 let estado = "inicio";
 let modoJuego = "sinFrenos";
 try { if (localStorage.getItem("modoJuego") === "carrera") modoJuego = "carrera"; } catch (_) {}
+// Nivel de la partida: hasta tener botón en el menú se elige con ?nivel=2
+let nivelJuego = nivelDe(+new URLSearchParams(location.search).get("nivel")).id;
 let modoCamara = 1; // 0 = tercera persona, 1 = primera persona
 let tiempoPartida = 0;
 let acumulador = 0;
@@ -636,7 +639,7 @@ function nuevaPartida() {
   if (partes.adorno) { partes.adorno.userData.ang = partes.adorno.userData.vel = 0; partes.adorno.rotation.z = 0; }
   // La semilla se comparte con el worker que calcula los bloques: ambos arman la misma calle
   const semilla = (Math.random() * 1e9) | 0;
-  pista = new Pista(semilla);
+  pista = new Pista(semilla, nivelJuego);
   tramos = new GestorTramos(pista, escena, mat, semilla);
   pista.construirFinal(escena);
   vehiculo = new Vehiculo(pista);
@@ -654,7 +657,7 @@ function nuevaPartida() {
   controles.centrarDireccion();
   colocarTorito(0);
   colocarCamara(0, true);
-  aviso(modoJuego === "carrera" ? "¡Carrera sin frenos contra 3 rivales!" : "¡Se cortó el cable del freno!", 2.5);
+  aviso(pista.nivel.avisoInicio ?? (modoJuego === "carrera" ? "¡Carrera sin frenos contra 3 rivales!" : "¡Se cortó el cable del freno!"), 2.5);
 }
 
 // ---------- Gritos del chofer (solo globo de texto) ----------
@@ -962,7 +965,7 @@ function revivir() {
   if (estado !== "jugando") return;
   controles.centrarDireccion();
   const v = vehiculo;
-  Object.assign(v, { estado: "ok", motivo: "", psi: 0, d: ANCHO / 4, v: 4, h: 0, vy: 0, inclinacion: 0, balanceo: 0, giro: 0 });
+  Object.assign(v, { estado: "ok", motivo: "", psi: 0, d: pista.ancho / 4, v: 4, h: 0, vy: 0, inclinacion: 0, balanceo: 0, giro: 0 });
   v.dano = Math.min(v.dano, 60);
   v.suelo = pista.alturaLateral(v.d, v.s);
   v.acelLat = v.sacudida = v.ladoVuelco = 0;
@@ -1034,7 +1037,7 @@ function procesarEventos() {
     } else if (e.tipo === "choque") {
       perderVida(e.motivo);
     } else if (e.tipo === "llegada") {
-      terminar(true, modoJuego === "carrera" ? "¡Carrera terminada!" : "¡Llegaste a la avenida con vida!");
+      terminar(true, modoJuego === "carrera" ? "¡Carrera terminada!" : pista.nivel.mensajeMeta);
     }
   }
   eventos.length = 0;
@@ -1048,9 +1051,11 @@ function terminar(gano, motivo) {
   const puestoFinal = modoJuego === "carrera" ? trafico.puesto(vehiculo) : 0;
   const metros = Math.round(Math.min(vehiculo.s, pista.meta));
   let record = 0;
-  try { record = +(localStorage.getItem(modoJuego === "carrera" ? "recordMetrosCarrera" : "recordMetros") || 0); } catch (_) { /* sin almacenamiento */ }
+  // El récord es por modo y por nivel; el nivel 1 conserva sus claves de siempre
+  const claveRecord = (modoJuego === "carrera" ? "recordMetrosCarrera" : "recordMetros") + (nivelJuego > 1 ? nivelJuego : "");
+  try { record = +(localStorage.getItem(claveRecord) || 0); } catch (_) { /* sin almacenamiento */ }
   const nuevo = metros > record;
-  if (nuevo) try { localStorage.setItem(modoJuego === "carrera" ? "recordMetrosCarrera" : "recordMetros", metros); } catch (_) { /* sin almacenamiento */ }
+  if (nuevo) try { localStorage.setItem(claveRecord, metros); } catch (_) { /* sin almacenamiento */ }
   tRevivir = 0;
   tFin = gano ? 1.4 : 1.8;
   rodandoFin = gano;
@@ -1079,7 +1084,7 @@ function empezar() {
   $("pausa").classList.remove("visible");
   $("hud").classList.remove("oculto");
   // La primera partida ya quedó armada y compilada: rehacerla justo aquí traba el arranque del sonido
-  if (!partidaLista || trafico.modo !== modoJuego) nuevaPartida();
+  if (!partidaLista || trafico.modo !== modoJuego || pista.nivel.id !== nivelJuego) nuevaPartida();
   partidaLista = false;
   estado = "jugando";
   ultimo = performance.now();
@@ -1227,4 +1232,4 @@ trafico.devolverCatalogo(trafico.tomarCatalogo());
 esperarTexturas((p) => mostrarCarga(p * PARTE_TEXTURAS)).then(() => prepararRender(PARTE_TEXTURAS));
 
 // Acceso para depuración desde la consola
-window.__juego = { get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, escena, camara, renderer, THREE, nuevaPartida };
+window.__juego = { get nivel() { return nivelJuego; }, get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, escena, camara, renderer, THREE, nuevaPartida };

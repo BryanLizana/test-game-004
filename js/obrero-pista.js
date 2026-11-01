@@ -9,7 +9,7 @@ self.onmessage = ({ data }) => {
   if (data.tipo === "pista") {
     partida = data.partida;
     claves = data.claves;
-    pista = new Pista(data.semilla);
+    pista = new Pista(data.semilla, data.nivel);
     pista.medidasChoza = data.medidas;
     return;
   }

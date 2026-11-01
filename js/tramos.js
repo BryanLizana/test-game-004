@@ -104,7 +104,7 @@ export class GestorTramos {
         if (!this.bloques.has(data.datos.indice)) this.listos.push(data.datos);
       };
       this.obrero.addEventListener("message", this.alMensaje);
-      this.obrero.postMessage({ tipo: "pista", partida: this.partida, semilla, claves: this.claves, medidas: pista.medidasChoza });
+      this.obrero.postMessage({ tipo: "pista", partida: this.partida, semilla, nivel: pista.nivel.id, claves: this.claves, medidas: pista.medidasChoza });
     }
   }
 

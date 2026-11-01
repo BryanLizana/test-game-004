@@ -20,7 +20,6 @@ const FRENO_RECARGA = 1 / 3.375;   // s de tanque que recupera por segundo sin f
 export const FRENO_ESPERA = 5;     // s bloqueado si se vacía
 const RODAR_ROCE = 0.7;            // m/s² al rodar sin motor tras la meta
 const RODAR_AIRE = 0.09;           // y lo que suma por cada m/s
-const CARRIL_FINAL = 2.6;          // m del eje: al rodar tras la meta vuelve a la calzada
 export const ROCE_MOTOR = 0.06;    // el motor engranado frena un poco (proporcional a v)
 
 // Aceleración a lo largo de la calle sin freno: pendiente, rodadura, aire y motor engranado.
@@ -39,7 +38,7 @@ export class Vehiculo {
 
   reiniciar() {
     this.s = 8;
-    this.d = ANCHO / 4;     // en Perú se maneja por la derecha
+    this.d = (this.pista.ancho ?? ANCHO) / 4;     // en Perú se maneja por la derecha
     this.psi = 0;           // rumbo relativo a la calle
     this.v = 4;
     this.giro = 0;          // ángulo del manubrio (rad)
@@ -113,7 +112,7 @@ export class Vehiculo {
     this.giro += Math.max(-dt * 2.2, Math.min(dt * 2.2, objetivo - this.giro));
 
     // --- Longitudinal ---
-    let a = aceleracionBajada(this.v, m.g, ROCE_MOTOR, Math.cos(this.psi));
+    let a = aceleracionBajada(this.v, m.gFis ?? m.g, ROCE_MOTOR, Math.cos(this.psi));
     if (frena && this.freno > 0 && this.h <= 0 && this.v > VEL_MIN_FRENO) {
       a -= FRENO * Math.min(1, (this.v - VEL_MIN_FRENO) / 2);
       this.frenando = true;
@@ -246,11 +245,12 @@ export class Vehiculo {
   // Pasada la meta el torito sigue solo por el plano, centrándose en su carril hasta quedar parado
   rodarHastaParar(dt) {
     const p = this.pista, m = p.muestra(this.s, this.muestra);
-    this.v = Math.max(0, this.v - (RODAR_ROCE + RODAR_AIRE * this.v) * dt);
+    this.v = Math.max(0, this.v - (RODAR_ROCE + RODAR_AIRE * this.v) * p.roceRodar(this.s) * dt);
     const suave = Math.min(1, dt * 1.5);
     this.giro -= this.giro * suave;
     this.psi -= this.psi * suave;
-    this.d += (Math.max(-CARRIL_FINAL, Math.min(CARRIL_FINAL, this.d)) - this.d) * suave;
+    const calzada = p.ancho / 2 - 0.9;   // vuelve a la pista si venía por la vereda
+    this.d += (Math.max(-calzada, Math.min(calzada, this.d)) - this.d) * suave;
     this.s = Math.min(p.largo - 5, this.s + (this.v * Math.cos(this.psi)) / Math.max(0.2, 1 - this.d * m.k) * dt);
     this.rpm = 900 + this.v * 120;
     this.acelLat = 0;

@@ -51,6 +51,10 @@ export class Trafico {
     this.escena = escena;
     this.pista = pista;
     this.modo = modo;
+    this.ancho = pista.ancho ?? ANCHO;
+    this.vereda = pista.vereda ?? VEREDA;
+    this.carril = pista.carril ?? 1.65;
+    this.tablaTrafico = pista.nivel?.trafico ?? null;
     this.agentes = [];
     this.tSubida = 2;
     this.tLento = 8;
@@ -112,6 +116,13 @@ export class Trafico {
     return tipo;
   }
 
+  // Tipo al azar según los pesos del nivel
+  sortear(pesos) {
+    let r = Math.random() * pesos.reduce((suma, [, peso]) => suma + peso, 0);
+    for (const [tipo, peso] of pesos) if ((r -= peso) <= 0) return tipo;
+    return pesos[0][0];
+  }
+
   agregar(tipo, s, d, v, extra = {}) {
     const modelo = reserva.tomar(this.claveModelo(tipo, extra), () => this.crearModelo(tipo, extra));
     // Un modelo reciclado llega con la pose del anterior: se deja derecho y quieto
@@ -133,8 +144,8 @@ export class Trafico {
     if (carrera) {
       // Mismo motor que el jugador; cambian el roce y lo atentos que van a lo que viene delante.
       for (let i = 0; i < 3; i++) {
-        this.agregar("torito", i === 0 ? 8 : 14, i === 1 ? 1.65 : -1.65, 4, {
-          rival: true, nombre: `Rival ${i + 1}`, carril: i === 1 ? 1.65 : -1.65, colorTorito: i,
+        this.agregar("torito", i === 0 ? 8 : 14, i === 1 ? this.carril : -this.carril, 4, {
+          rival: true, nombre: `Rival ${i + 1}`, carril: i === 1 ? this.carril : -this.carril, colorTorito: i,
           roce: ROCE_MOTOR * [1.04, 1, 0.96][i], alerta: [11, 17, 23][i],
           termino: false, tiempoLlegada: null, tImpacto: 0, tRetraso: 0,
         });
@@ -144,14 +155,15 @@ export class Trafico {
         const m = p.muestra(s);
         if (Math.abs(m.k) > 0.02) continue;
         const lado = Math.random() < 0.5 ? -1 : 1;
-        this.agregar(Math.random() < 0.8 ? "carro" : "torito", s, lado * (ANCHO / 2 - 1.0), 0, { estacionado: true, sentido: lado });
+        const tabla = this.tablaTrafico;
+        this.agregar(tabla ? this.sortear(tabla.estacionados) : Math.random() < 0.8 ? "carro" : "torito", s, lado * (this.ancho / 2 - 1.0), 0, { estacionado: true, sentido: lado });
       }
       // Obras inconclusas y desmonte botado en la calle (ocupan un costado)
-      for (let s = 70; s < p.meta - 40; s += 60 + Math.random() * 90) {
+      if (!this.tablaTrafico || this.tablaTrafico.obras) for (let s = 70; s < p.meta - 40; s += 60 + Math.random() * 90) {
         const tipo = p.enTierra(s) || Math.random() < 0.45 ? "desmonte" : "obra";
         const lado = Math.random() < 0.5 ? -1 : 1;
         const a = this.agregar(tipo, s, 0, 0, { estatico: true, sentido: 1 });
-        a.d = lado * (ANCHO / 2 - a.ancho / 2 + (tipo === "obra" ? 0.6 : 0.2));
+        a.d = lado * (this.ancho / 2 - a.ancho / 2 + (tipo === "obra" ? 0.6 : 0.2));
         a.giroExtra = (Math.random() - 0.5) * 0.4;
         this.colocar(a);
       }
@@ -161,10 +173,10 @@ export class Trafico {
     for (let s = 40; s < p.finTierra - 20; s += 35 + Math.random() * 40) cruces.push(s);
     for (const s of cruces) {
       const r = Math.random(), tierra = p.enTierra(s);
-      const tipo = carrera ? "persona" : r < (tierra ? 0.3 : 0.18) ? "perro" : r < (tierra ? 0.5 : 0.28) ? "gato" : "persona";
+      const tipo = carrera || (this.tablaTrafico && !this.tablaTrafico.animales) ? "persona" : r < (tierra ? 0.3 : 0.18) ? "perro" : r < (tierra ? 0.5 : 0.28) ? "gato" : "persona";
       const tipoPersona = tipo === "persona" ? elegir(["senora", "senora", "viejo", "joven"]) : undefined;
       const lado = Math.random() < 0.5 ? -1 : 1;
-      const dVereda = tierra ? ANCHO / 2 + 1.2 : ANCHO / 2 + 0.8;
+      const dVereda = tierra ? this.ancho / 2 + 1.2 : this.ancho / 2 + 0.8;
       this.agregar(tipo, s, lado * dVereda, 0, {
         peaton: true, lado, esperando: true, tipoPersona,
         disparo: 25 + Math.random() * 35,
@@ -229,8 +241,8 @@ export class Trafico {
       const s = base() + 180 + Math.random() * 60;
       if (s < p.meta - 20) {
         const r = Math.random();
-        const tipo = p.enTierra(s) ? "torito" : r < 0.4 ? "carro" : r < 0.65 ? "torito" : r < 0.9 ? "combi" : "bus";
-        this.agregar(tipo, s, -ANCHO / 4, -(5 + Math.random() * 5), { sentido: -1 });
+        const tipo = this.tablaTrafico ? this.sortear(this.tablaTrafico.suben) : p.enTierra(s) ? "torito" : r < 0.4 ? "carro" : r < 0.65 ? "torito" : r < 0.9 ? "combi" : "bus";
+        this.agregar(tipo, s, -this.ancho / 4, -(5 + Math.random() * 5), { sentido: -1 });
       }
     }
     if (carrera) {
@@ -241,7 +253,7 @@ export class Trafico {
         const s = base() + 130 + Math.random() * 40;
         if (s < p.meta - 20) {
           const lado = Math.random() < 0.5 ? -1 : 1;
-          this.agregar("persona", s, lado * (ANCHO / 2 - 1.2), -(0.9 + Math.random() * 0.6), { caminante: true, sentido: -1 });
+          this.agregar("persona", s, lado * (this.ancho / 2 - 1.2), -(0.9 + Math.random() * 0.6), { caminante: true, sentido: -1 });
         }
       }
     } else {
@@ -252,8 +264,8 @@ export class Trafico {
         const s = veh.s + 140;
         if (s < p.meta - 60) {
           const r = Math.random();
-          const tipo = p.enTierra(s) ? "torito" : r < 0.45 ? "torito" : r < 0.85 ? "combi" : "bus";
-          this.agregar(tipo, s, ANCHO / 4, 3 + Math.random() * 3);
+          const tipo = this.tablaTrafico ? this.sortear(this.tablaTrafico.bajan) : p.enTierra(s) ? "torito" : r < 0.45 ? "torito" : r < 0.85 ? "combi" : "bus";
+          this.agregar(tipo, s, this.ancho / 4, 3 + Math.random() * 3);
         }
       }
     }
@@ -270,7 +282,7 @@ export class Trafico {
           if (a.s > veh.s && a.s - veh.s < a.disparo) this.gritos.push(elegir(GRITOS[clave] || GRITOS.joven));
         }
         a.d += a.vd * dt;
-        if (a.vd * a.d > 0 && Math.abs(a.d) > ANCHO / 2 + VEREDA * 0.6) { a.vd = 0; a.d = Math.sign(a.d) * (ANCHO / 2 + VEREDA * 0.6); a.lado = Math.sign(a.d); }
+        if (a.vd * a.d > 0 && Math.abs(a.d) > this.ancho / 2 + this.vereda * 0.6) { a.vd = 0; a.d = Math.sign(a.d) * (this.ancho / 2 + this.vereda * 0.6); a.lado = Math.sign(a.d); }
         if (a.vd !== 0 && !a.chocado) animarCaminar(a.modelo, this.tiempo * (a.tipo === "persona" ? 1.3 : 2));
       } else if (!a.chocado) {
         if (a.tParado > 0 && (a.tParado -= dt) <= 0) a.v = a.vAntes;
@@ -330,7 +342,7 @@ export class Trafico {
     let cerca = null;
     for (const o of this.agentes) {
       if (o === a || o.chocado || o.termino || o.s <= a.s || o.s - a.s > distancia) continue;
-      if (o.peaton && Math.abs(o.d) > ANCHO / 2) continue;   // en la vereda no estorba
+      if (o.peaton && Math.abs(o.d) > this.ancho / 2) continue;   // en la vereda no estorba
       if (Math.abs(o.d - carril) > (o.ancho + ANCHO_TORITO) / 2 + 0.3) continue;
       if (!cerca || o.s < cerca.s) cerca = o;
     }
@@ -352,7 +364,7 @@ export class Trafico {
       if (!a.rival) continue;
       a.tImpacto = Math.max(0, a.tImpacto - dt);
       if (!a.termino) {
-        const g = this.pista.muestra(a.s, this.muestra).g;
+        const lugar = this.pista.muestra(a.s, this.muestra), g = lugar.gFis ?? lugar.g;
         const m = this.pista.muestra(Math.min(meta, a.s + 8), this.muestra);
         if (a.tRetraso > 0) {
           // Chocó: se queda parado un rato y vuelve a arrancar como el jugador al revivir
@@ -362,15 +374,15 @@ export class Trafico {
           // Misma bajada que el jugador; el freno gastado (1.5 m/s²) lo usan en curvas cerradas o si no pueden pasar
           a.v = Math.max(0, a.v + aceleracionBajada(a.v, g, a.roce) * dt);
           const delante = this.obstaculo(a, a.carril, a.alerta, veh);
-          const alterno = a.carril >= 0 ? -1.65 : 1.65;
+          const alterno = a.carril >= 0 ? -this.carril : this.carril;
           let frenar = a.v > Math.sqrt(5 / Math.max(0.015, Math.abs(m.k)));
           if (delante) {
             if (!this.obstaculo(a, alterno, a.alerta + 6, veh) && !this.lateralOcupado(a, alterno, veh)) a.carril = alterno;
             else frenar = true;
             // Pegado a otro torito que baja: no lo atraviesa
             if ((delante === veh || delante.rival) && delante.s - a.s < 3.5) a.v = Math.min(a.v, delante.v);
-          } else if (a.carril < 0 && !this.obstaculo(a, 1.65, 18, veh) && !this.lateralOcupado(a, 1.65, veh)) {
-            a.carril = 1.65;   // terminado el adelantamiento vuelve a su carril
+          } else if (a.carril < 0 && !this.obstaculo(a, this.carril, 18, veh) && !this.lateralOcupado(a, this.carril, veh)) {
+            a.carril = this.carril;   // terminado el adelantamiento vuelve a su carril
           }
           if (frenar && a.v > 4.5) a.v -= 1.5 * dt;
         }
@@ -396,7 +408,7 @@ export class Trafico {
           // De costado: cada uno sale empujado hacia su lado y el jugador rebota un poco
           const lado = Math.sign(veh.d - a.d) || 1;
           veh.d += lado * encajeD * 0.6;
-          a.d = Math.max(-2.4, Math.min(2.4, a.d - lado * encajeD * 0.4));
+          a.d = Math.max(1.1 - this.ancho / 2, Math.min(this.ancho / 2 - 1.1, a.d - lado * encajeD * 0.4));
           vRel = Math.abs(veh.v * Math.sin(veh.psi)) + Math.abs(veh.v - a.v) * 0.3;
           veh.psi = lado * Math.min(0.25, Math.abs(veh.psi) * 0.5 + 0.06);
           veh.v *= 0.97; a.v *= 0.97;
@@ -441,7 +453,7 @@ export class Trafico {
         o.tParado = 3;
         a.tRetraso = 3;
         if (o.s > a.s) a.s -= encajeS + 0.3;
-        a.carril = o.d >= 0 ? -1.65 : 1.65;   // mientras espera se hace a un lado para seguir
+        a.carril = o.d >= 0 ? -this.carril : this.carril;   // mientras espera se hace a un lado para seguir
       }
       a.v *= 0.3;
       if (Math.abs(a.s - veh.s) < 120) this.noticias.push(`¡${a.nombre} chocó!`);

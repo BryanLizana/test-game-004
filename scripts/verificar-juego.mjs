@@ -42,8 +42,9 @@ for (let i = 0; i < 600 && vuelcoOriginal.estado === "ok"; i++) {
 assert.equal(vuelcoOriginal.estado, "choque");
 assert.match(vuelcoOriginal.motivo, /volcaste/, "Sin frenos conserva el vuelco original");
 
-class Vector3 { set(x, y, z) { Object.assign(this, { x, y, z }); return this; } }
-const Pista = clase("js/pista.js", "Pista", { THREE: { Vector3 } });
+class Vector3 { set(x, y, z) { Object.assign(this, { x, y, z }); return this; } lerpVectors(a, b, t) { return this.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); } }
+const nivelDe = clase("js/niveles.js", "nivelDe");
+const Pista = clase("js/pista.js", "Pista", { THREE: { Vector3 }, nivelDe });
 // La versión lejana de cada losa no abre rendijas: sus aristas interiores se comparten
 // y su borde es idéntico al de la versión cercana, que es lo que ve la losa vecina.
 function aristasLibres(idx, ini, fin) {
@@ -286,6 +287,66 @@ assert.ok(cruce.tiempoLlegada > 0 && cruce.tiempoLlegada <= cruce.tiempo, "cruce
   assert.equal(ev.filter((e) => e.tipo === "llegada").length, 1, "la llegada se avisa una vez");
   assert.ok(p.finTierra >= 540, "trocha un 20 % más larga");
   assert.ok(!p.baches.some((b) => b.s > p.finCalle) && !p.cruces.some((s) => s > p.finCalle), "el plano final queda libre");
+}
+// Nivel 2: ciudad, San Isidro, Chorrillos, bajada, malecón y playa
+for (const semilla of [3, 42, 777, 2026]) {
+  const p = new Pista(semilla, 2);
+  assert.equal(p.ancho, 10.5);
+  assert.equal(p.finTierra, 0);
+  assert.ok(!p.enTierra(10) && p.chozas.length === 0 && p.llantas.length === 0, "sin nada del cerro");
+  assert.ok(Math.abs(p.meta - 2650) < 15 && Math.abs(p.largo - 2800) < 15, "ruta de 2.800 m");
+  assert.deepEqual([...new Set(p.barrios)], ["ciudad", "sanIsidro", "chorrillos", "bajada", "malecon", "playa"]);
+  assert.ok(p.casas.flat().every((c) => c.barrio !== "playa"), "la playa no tiene casas");
+  for (const lista of [p.x, p.y, p.z, p.th, p.g, p.gFis, p.k]) assert.ok(lista.every(Number.isFinite), "geometría sin NaN");
+  for (let s = 5; s < p.largo - 5; s += 41) for (const d of [-7, 0, 7]) assert.ok(p.alturaTerreno(s, d) < 0, "el terreno no tapa la calle");
+  const espejo = new Proxy({}, { get: (_, clave) => (clave === "letreros" || clave === "geoPrendas" || clave === "geoFrazadas" ? ["a", "b", "c", "d", "e", "f", "g", "h"] : clave) });
+  for (let k = 0; k < p.numBloques; k++) for (const m of p.datosBloque(k, espejo).mallas) assert.ok(m.pos.every(Number.isFinite), "bloque sin NaN");
+  for (let k = p.numBloques; k < p.numPiezas; k += 9) assert.ok(p.datosBloque(k, espejo).mallas[0].pos.every(Number.isFinite), "losa sin NaN");
+  for (let s = 0; s < p.largo; s += 1) {
+    const m = p.muestra(s);
+    if (Math.abs(m.k) > 0.0005 && p.barrio(s) !== "bajada") assert.ok(1 / Math.abs(m.k) >= 51, "curva abierta en s=" + s);
+  }
+  // Sin tocar nada, siguiendo la calle en línea recta: no se para y las curvas no vuelcan a nadie
+  const v = new Vehiculo(p), dt = 1 / 120;
+  let t = 0, peor = 0, lento = 99;
+  while (v.s < p.meta && t < 400) {
+    const m = p.muestra(v.s);
+    v.v = Math.max(0, v.v + aceleracionBajada(v.v, m.gFis) * dt);
+    v.s += v.v * dt;
+    t += dt;
+    peor = Math.max(peor, v.v * v.v * Math.abs(m.k));
+    if (v.s > 200) lento = Math.min(lento, v.v);
+  }
+  assert.ok(v.s >= p.meta && v.v * 3.6 > 30, "llega a la meta rápido: " + (v.v * 3.6).toFixed(1) + " km/h");
+  assert.ok(lento * 3.6 > 30, "nunca se queda sin empuje");
+  assert.ok(peor < 7.5, "curva imposible: " + peor.toFixed(2) + " m/s²");
+  // Tras la meta la arena lo para antes del final
+  const real = new Vehiculo(p);
+  real.s = p.meta - 0.05; real.v = 21;
+  const ev = [], nada = { giro: 0, freno: false };
+  real.paso(dt, nada, ev);
+  for (let i = 0; i < 6000 && real.v > 0; i++) real.paso(dt, nada, ev);
+  assert.equal(real.v, 0);
+  assert.ok(real.s < p.meta + 70, "la arena frena fuerte");
+}
+// Tráfico del nivel 2: sin toritos, animales ni obras, en la calle ancha
+{
+  const p = new Pista(5, 2);
+  const t = new Trafico(escenaSimple, p, "sinFrenos");
+  assert.ok(t.agentes.length > 5);
+  assert.ok(t.agentes.every((a) => a.tipo === "carro" || a.tipo === "persona"), "tráfico sembrado del nivel 2");
+  assert.ok(t.agentes.filter((a) => a.tipo === "carro").every((a) => Math.abs(a.d) > 3.5), "estacionados al borde de la calle ancha");
+  const veh = { s: 300, d: 2.6, v: 15, h: 0, estado: "ok", invulnerable: true };
+  for (let i = 0; i < 2400; i++) t.actualizar(1 / 60, veh);
+  assert.ok(t.agentes.every((a) => !["torito", "perro", "gato", "obra", "desmonte"].includes(a.tipo)), "nada del barrio sube");
+}
+// El nivel 1 no cambia con la tabla de niveles
+{
+  const p = new Pista(42);
+  assert.equal(p.ancho, 7);
+  assert.equal(p.gFis, p.g);
+  assert.equal(p.barrios, null);
+  assert.equal(new Vehiculo(p).d, 1.75);
 }
 // Un rival que choca con un auto se queda parado y pierde tiempo
 const choqueBots = new Trafico(escenaSimple, { ...circuito, cruces: [] }, "carrera");
