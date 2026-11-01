@@ -29,17 +29,9 @@ html, body {
 }
 .pantalla.visible { display: flex; }
 #inicio { background: #8fa3ad url("../assets/img/inicio.jpg") center 35% / cover no-repeat; }
-/* La ilustración es vertical: en pantalla ancha va completa y centrada, con la misma imagen
-   desenfocada a los lados (cover solo dejaba ver una franja y cortaba la moto). */
+/* En pantalla ancha va la versión horizontal de la ilustración; el celular sigue con la vertical. */
 @media (min-width: 900px) and (min-aspect-ratio: 1/1) {
-  #inicio { background: #2a2c30; overflow: hidden; }
-  #inicio::before, #inicio::after {
-    content: "";
-    position: absolute;
-    background: url("../assets/img/inicio.jpg") center / cover no-repeat;
-  }
-  #inicio::before { inset: -40px; z-index: -2; filter: blur(24px) brightness(0.72); }
-  #inicio::after { inset: 0; z-index: -1; background-size: contain; }
+  #inicio { background: #8fa3ad url("../assets/img/inicio-desktop.jpg") center 45% / cover no-repeat; }
 }
 #fin, #pausa { background: rgba(20, 10, 10, 0.7); justify-content: center; gap: 4vh; }
 
