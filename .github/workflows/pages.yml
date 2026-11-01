@@ -1,0 +1,55 @@
+# Publica main en la raíz del sitio y development en /dev/.
+# Pages solo admite desplegar desde main, así que un push a development
+# dispara este mismo workflow sobre main, que arma el sitio con las dos ramas.
+name: Publicar en GitHub Pages
+
+on:
+  push:
+    branches: [main, development]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  disparar:
+    if: github.ref == 'refs/heads/development'
+    runs-on: ubuntu-latest
+    permissions:
+      actions: write
+    steps:
+      - name: Desplegar desde main
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: gh workflow run pages.yml --repo "$GITHUB_REPOSITORY" --ref main
+
+  desplegar:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      pages: write
+      id-token: write
+    concurrency:
+      group: pages
+      cancel-in-progress: false
+    environment:
+      name: github-pages
+      url: ${{ steps.despliegue.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          ref: main
+          path: sitio
+      - uses: actions/checkout@v7
+        with:
+          ref: development
+          path: sitio/dev
+      - name: Quitar archivos de git
+        run: rm -rf sitio/.git sitio/.github sitio/dev/.git sitio/dev/.github
+      - uses: actions/configure-pages@v6
+      - uses: actions/upload-pages-artifact@v5
+        with:
+          path: sitio
+      - id: despliegue
+        uses: actions/deploy-pages@v5
