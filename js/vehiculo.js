@@ -1,4 +1,4 @@
-import { ANCHO } from "./pista.js?v=1.6.9";
+import { ANCHO } from "./pista.js?v=1.7.0";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
@@ -211,7 +211,7 @@ export class Vehiculo {
         if (vNormal > 7.5) {
           const motivo = p.enTierra(this.s) ? "¡Te saliste de la trocha!"
             : lado > 0 && p.enMirador(this.s)
-              ? { concreto: "¡Te chocaste contra la baranda!", guardavia: "¡Te chocaste con el guardavía!", valla: "¡Rompiste la valla!" }[p.mirador(this.s).tipo]
+              ? { concreto: "¡Te chocaste contra la baranda!", malecon: "¡Te chocaste contra la baranda!", guardavia: "¡Te chocaste con el guardavía!", valla: "¡Rompiste la valla!" }[p.mirador(this.s).tipo]
               : "¡Te estrellaste contra una casa!";
           return this.chocar(motivo, eventos);
         }

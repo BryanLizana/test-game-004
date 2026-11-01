@@ -1,15 +1,16 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.9";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.7.0";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.9";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.9";
-import { nivelDe } from "./niveles.js?v=1.6.9";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.9";
-import { Trafico } from "./trafico.js?v=1.6.9";
-import { Controles } from "./controles.js?v=1.6.9";
-import { Sonido } from "./audio.js?v=1.6.9";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.9";
-import { crearLetreros } from "./ambiente.js?v=1.6.9";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.7.0";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.7.0";
+import { nivelDe } from "./niveles.js?v=1.7.0";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.7.0";
+import { armarDecorado } from "./decorado-nivel2.js?v=1.7.0";
+import { Trafico } from "./trafico.js?v=1.7.0";
+import { Controles } from "./controles.js?v=1.7.0";
+import { Sonido } from "./audio.js?v=1.7.0";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.7.0";
+import { crearLetreros } from "./ambiente.js?v=1.7.0";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -206,6 +207,13 @@ const mat = {
   pirca: est(0x8d8172, { side: THREE.DoubleSide }),
   pircaLisa: est(0x8d8172, { side: THREE.DoubleSide }),
   cerro: est(0x9b8466, { side: THREE.DoubleSide }),
+  // Solo nivel 2: ver SOLO_N2 y cargarTexturasN2
+  fachadaN2: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
+  sueloN2: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
+  arenaN2: est(0xd9c29a, { side: THREE.DoubleSide }),
+  vitrinas: est(0x46586a, { side: THREE.DoubleSide, roughness: 0.5 }),
+  letrerosN2: est(0xd8b52e, { side: THREE.DoubleSide }),
+  barandaMalecon: est(0x9aa0a4, { side: THREE.DoubleSide, alphaTest: 0.5 }),
   baranda: est(0xd8d1c2, { side: THREE.DoubleSide }),
   cruz: est(0xf4f4f4),
   llantaPintada: est(0xffffff, { roughness: 0.8 }),
@@ -295,6 +303,77 @@ Promise.all([1, 2, 3, 4].map((k) => new Promise((ok, mal) => {
 }).catch(() => {});
 ensuciar(mat.muroLateral);
 mat.charco.visible = false;
+
+// ---------- Texturas del nivel 2: se piden solo al jugarlo ----------
+// Atlas 4x4 de fachadas: aquí la foto también se repite a lo alto (torres de muchos pisos)
+ensuciar(mat.fachadaN2, `#ifdef USE_MAP
+  float celdaAtlas = floor(vMapUv.x / ${CELDA_ATLAS.toFixed(1)} + 0.001);
+  vec2 local = vec2(vMapUv.x - celdaAtlas * ${CELDA_ATLAS.toFixed(1)}, vMapUv.y);
+  vec2 origen = vec2(mod(celdaAtlas, 4.0) * 0.25, 0.75 - floor(celdaAtlas / 4.0) * 0.25);
+  vec2 uvAtlas = origen + (0.004 + fract(local) * 0.992) * 0.25;
+  vec4 sampledDiffuseColor = textureGrad(map, uvAtlas, dFdx(local) * 0.25, dFdy(local) * 0.25);
+  diffuseColor *= sampledDiffuseColor;
+#endif`, "fachadaAtlas4");
+const FOTOS_N2 = ["fachada-ciudad-1", "fachada-ciudad-2", "fachada-ciudad-3", "fachada-ciudad-4",
+  "fachada-sanisidro-1", "fachada-sanisidro-2", "fachada-sanisidro-3", "fachada-sanisidro-4",
+  "casona-1", "casona-2", "casona-3", "casona-1"];
+const CAMBIOS_N2 = [
+  { material: mat.asfalto, ruta: "asfalto-liso.jpg" }, { material: mat.vereda, ruta: "vereda-losa.jpg" },
+  { ruta: "cielo-costa.jpg", cielo: true },
+];
+let n2Pedido = false;
+function cargarTexturasN2() {
+  if (n2Pedido) return;
+  n2Pedido = true;
+  const n2 = "assets/tex/n2/";
+  mat.arenaN2.userData.tinte = 0xf6e2bb;
+  textura(mat.arenaN2, "assets/tex/arena.jpg");
+  textura(mat.sueloN2, "assets/tex/arena.jpg");
+  textura(mat.vitrinas, n2 + "vitrinas.jpg", false);
+  textura(mat.letrerosN2, n2 + "letreros.jpg", false);
+  textura(mat.barandaMalecon, n2 + "baranda-malecon.png");
+  const lector = new THREE.ImageLoader();
+  // Si falta una foto, su celda usa una fachada del nivel 1
+  const foto = (ruta, k) => new Promise((ok) => lector.load(n2 + ruta + ".jpg", ok, undefined,
+    () => lector.load(`assets/tex/fachada${(k % 4) + 1}.jpg`, ok, undefined, () => ok(null))));
+  Promise.all(FOTOS_N2.map(foto)).then((fotos) => {
+    const lado = 512, c = document.createElement("canvas");
+    c.width = c.height = lado * 4;
+    const g = c.getContext("2d");
+    fotos.forEach((img, k) => { if (img) g.drawImage(img, (k % 4) * lado, Math.floor(k / 4) * lado, lado, lado); });
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    mat.fachadaN2.map = t;
+    mat.fachadaN2.needsUpdate = true;
+  });
+  for (const cambio of CAMBIOS_N2) {
+    cargador.load(n2 + cambio.ruta, (t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      t.wrapS = THREE.RepeatWrapping;
+      t.wrapT = cambio.cielo ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
+      cambio.mapa = t;
+      vestirNivel();
+    }, undefined, () => {});
+  }
+}
+// Pone o quita lo que el nivel 2 cambia sobre materiales compartidos con el nivel 1
+function vestirNivel() {
+  const n2 = !!pista && pista.nivel.id === 2;
+  if (n2) cargarTexturasN2();
+  for (const c of CAMBIOS_N2) {
+    const m = c.cielo ? cieloMat : c.material;
+    if (n2 && c.mapa && m.map !== c.mapa) { c.base = m.map; m.map = c.mapa; m.needsUpdate = true; }
+    if (!n2 && c.base && m.map === c.mapa) { m.map = c.base; m.needsUpdate = true; }
+    if (c.cielo && m.map && uniformesCielo.cieloListo.value) uniformesCielo.cieloNiebla.value = m.map;
+  }
+  const muro = mat.muroLateral.map;
+  if (muro) {
+    const envolver = n2 ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+    if (muro.wrapT !== envolver) { muro.wrapT = envolver; muro.needsUpdate = true; }
+  }
+}
 
 // Entorno 360° para reflejos reales en cromo, vidrio y vinilo
 cargador.load("assets/tex/entorno.jpg", (t) => {
@@ -473,6 +552,7 @@ const INSTANCIADOS = new Set(["llantaPintada", "posteMadera", "poste", "foco", "
 const CON_COLOR = new Set(["llantaPintada", "follaje"]);   // instancias con color propio
 const TAMBIEN_MALLA = new Set(["madera"]);
 const SIN_USO = new Set(["prendas"]);
+const SOLO_N2 = new Set(["fachadaN2", "sueloN2", "arenaN2", "vitrinas", "letrerosN2", "barandaMalecon"]);
 
 function esperarTexturas(alAvance) {
   return new Promise((listo) => {
@@ -498,7 +578,7 @@ function variantesDeShader() {
     return o;
   };
   for (const [nombre, valor] of Object.entries(mat)) {
-    if (SIN_USO.has(nombre)) continue;
+    if (SIN_USO.has(nombre) || (SOLO_N2.has(nombre) && nivelJuego !== 2)) continue;
     const enInstancias = INSTANCIADOS.has(nombre), color = CON_COLOR.has(nombre);
     for (const m of [].concat(valor)) {
       if (!m || !m.isMaterial) continue;
@@ -608,12 +688,15 @@ async function prepararRender(desde = 0) {
 // ---------- Estado de juego ----------
 const controles = new Controles();
 const sonido = new Sonido();
-let pista, tramos, vehiculo, trafico;
+let pista, tramos, vehiculo, trafico, decorado = null;
 let estado = "inicio";
 let modoJuego = "sinFrenos";
 try { if (localStorage.getItem("modoJuego") === "carrera") modoJuego = "carrera"; } catch (_) {}
 // Nivel de la partida: hasta tener botón en el menú se elige con ?nivel=2
-let nivelJuego = nivelDe(+new URLSearchParams(location.search).get("nivel")).id;
+const nivelUrl = +new URLSearchParams(location.search).get("nivel");
+let nivelGuardado = 1;
+try { nivelGuardado = +localStorage.getItem("nivelJuego") || 1; } catch (_) { /* sin almacenamiento */ }
+let nivelJuego = nivelDe(nivelUrl || nivelGuardado).id;
 let modoCamara = 1; // 0 = tercera persona, 1 = primera persona
 let tiempoPartida = 0;
 let acumulador = 0;
@@ -628,6 +711,7 @@ function nuevaPartida() {
     escena.remove(pista.final);
     liberarRecursos(pista.final, recursosPista, liberados);
   }
+  if (decorado) { decorado.liberar(); decorado = null; }
   if (trafico) trafico.liberarTodo();
   tRevivir = tFin = 0; mostrarFin = null; rodandoFin = false;
   $("fin").classList.remove("rodando");
@@ -642,6 +726,8 @@ function nuevaPartida() {
   pista = new Pista(semilla, nivelJuego);
   tramos = new GestorTramos(pista, escena, mat, semilla);
   pista.construirFinal(escena);
+  vestirNivel();
+  if (pista.nivel.costa) decorado = armarDecorado(pista, escena, cargador);
   vehiculo = new Vehiculo(pista);
   vehiculo.frenoPulso = true;
   tramos.precargar(vehiculo.s);
@@ -881,6 +967,7 @@ function bucle(ahora) {
     colocarCamara(dt);
   }
   cielo.position.copy(camara.position);
+  if (decorado) decorado.animar(dt, camara.position);
   if (cieloMat.map && !uniformesCielo.cieloListo.value) {
     // La niebla toma el color de la foto del cielo apenas termina de cargar
     uniformesCielo.cieloNiebla.value = cieloMat.map;
@@ -1114,6 +1201,22 @@ function mostrarModo() {
   $("btn-modo").textContent = `Modo: ${carrera ? "Carrera" : "Sin frenos"}`;
   $("ayuda-controles").innerHTML = `${carrera ? "<b>Carrera:</b> la misma bajada sin frenos contra 3 rivales, con autos y gente que suben. Tienes 8 vidas.<br>" : ""}<b>Celular:</b> toca cada mitad para girar, o inclina el teléfono. Pedales abajo.<br><b>PC:</b> ← → / A D dirección · S / ↓ / Espacio freno gastado · H claxon · C cámara`;
 }
+let fotosN2Pedidas = nivelJuego === 2;
+function mostrarNivel() { $("btn-nivel").textContent = `Nivel: ${nivelJuego === 2 ? "2 Playa" : "1 Cerro"}`; }
+$("btn-nivel").addEventListener("click", () => {
+  nivelJuego = nivelJuego === 2 ? 1 : 2;
+  try { localStorage.setItem("nivelJuego", String(nivelJuego)); } catch (_) { /* sin almacenamiento */ }
+  mostrarNivel();
+  $("btn-jugar").disabled = true;
+  mostrarCarga(0);
+  // La primera vez hay que esperar las fotos del nivel 2; sin descargas pendientes el gestor no avisaría
+  const espera = nivelJuego === 2 && !fotosN2Pedidas ? esperarTexturas(() => {}) : Promise.resolve();
+  fotosN2Pedidas ||= nivelJuego === 2;
+  nuevaPartida();
+  partidaLista = true;
+  espera.then(() => prepararRender(0));   // cada nivel compila sus materiales
+});
+mostrarNivel();
 $("btn-modo").addEventListener("click", () => {
   modoJuego = modoJuego === "carrera" ? "sinFrenos" : "carrera";
   try { localStorage.setItem("modoJuego", modoJuego); } catch (_) {}
@@ -1229,7 +1332,7 @@ $("version-pausa").textContent = $("version").textContent;
 requestAnimationFrame(bucle);
 // El catálogo se toma antes de esperar: así sus texturas entran en la misma carga.
 trafico.devolverCatalogo(trafico.tomarCatalogo());
-esperarTexturas((p) => mostrarCarga(p * PARTE_TEXTURAS)).then(() => prepararRender(PARTE_TEXTURAS));
+esperarTexturas((p) => mostrarCarga(p * PARTE_TEXTURAS)).then(() => { vestirNivel(); return prepararRender(PARTE_TEXTURAS); });
 
 // Acceso para depuración desde la consola
 window.__juego = { get nivel() { return nivelJuego; }, get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, escena, camara, renderer, THREE, nuevaPartida };

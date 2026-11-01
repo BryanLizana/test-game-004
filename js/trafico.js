@@ -1,8 +1,9 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=1.6.9";
-import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.6.9";
-import * as modelos from "./modelos.js?v=1.6.9";
-import { reserva } from "./reciclaje.js?v=1.6.9";
+import { ANCHO, VEREDA } from "./pista.js?v=1.7.0";
+import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.7.0";
+import * as modelos from "./modelos.js?v=1.7.0";
+import * as modelosN2 from "./modelos-nivel2.js?v=1.7.0";
+import { reserva } from "./reciclaje.js?v=1.7.0";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -16,6 +17,16 @@ const GRITOS = {
 const elegir = (lista) => lista[(Math.random() * lista.length) | 0];
 const ALCANCE_AGENTE = 230;   // m; personas, animales y autos
 const ALCANCE_RIVAL = 340;
+// Nivel 2
+const COLORES_DEPORTIVO = [0xd01020, 0xf2c200, 0x20242a];
+const VEL_CRUCE = 4.5;          // m/s del auto que atraviesa la calle
+const CRUCE_ESPERA = 2.3;       // s antes de que llegue el jugador: arranca entre este valor
+const CRUCE_ESPERA_MAX = 3.15;  // y este, así al llegar el auto está en el medio o ya pasándose de carril
+const SEMAFORO_AMBAR = 6.5;     // s antes de llegar
+const SEMAFORO_ROJO = 4.5;
+const FUERA_DE_CALLE = 3;       // m tras la línea de fachadas: el auto sale y entra tapado por ellas
+const CICLISTA_V = 4;
+const BUS_PARADO = 4;           // s que espera en un paradero
 
 // Mototaxis de la zona: azul, verde o amarillo, solos o combinados con blanco [carrocería, techo]
 const BLANCO = 0xf2f2ee;
@@ -34,6 +45,10 @@ const MEDIDAS = {
   gato: { largo: 0.45, ancho: 0.25 },
   obra: { largo: 3, ancho: 2 },
   desmonte: { largo: 2.5, ancho: 2 },
+  busAzul: { largo: 12, ancho: 2.67 },
+  deportivo: { largo: 4.3, ancho: 1.84 },
+  paradero: { largo: 5.2, ancho: 1.9 },
+  semaforo: { largo: 0.4, ancho: 0.4 },
 };
 
 // Respaldo si modelos.js todavía no tiene los obstáculos estáticos
@@ -55,6 +70,10 @@ export class Trafico {
     this.vereda = pista.vereda ?? VEREDA;
     this.carril = pista.carril ?? 1.65;
     this.tablaTrafico = pista.nivel?.trafico ?? null;
+    this.nivel2 = !!pista.nivel?.tramos;
+    this.paraderos = [];
+    this.sigDeportivo = 150;
+    this.tCiclista = 0;
     this.agentes = [];
     this.tSubida = 2;
     this.tLento = 8;
@@ -79,7 +98,11 @@ export class Trafico {
         const [color, techo] = COLORES_TORITO[extra.colorTorito ?? 0];
         return crearTorito({ color, techo, detalle: "bajo" });
       }
-      case "persona": return crearPersona({ tipo: extra.tipoPersona });
+      case "persona": return extra.ciclista ? modelosN2.crearCiclista() : crearPersona({ tipo: extra.tipoPersona });
+      case "busAzul": return modelosN2.crearBusAzul();
+      case "deportivo": return modelosN2.crearDeportivo(COLORES_DEPORTIVO[extra.colorDeportivo ?? 0]);
+      case "paradero": return modelosN2.crearParadero();
+      case "semaforo": return modelosN2.crearSemaforo();
       case "perro": return crearPerro();
       case "obra": return modelos.crearObra ? modelos.crearObra({ variante: extra.varianteObra ?? 0 }) : cajaRespaldo(0xb5653d, 3, 2, 1.2);
       case "desmonte": return modelos.crearDesmonte ? modelos.crearDesmonte({ tamano: 0.8 + Math.random() * 0.5 }) : cajaRespaldo(0x8b7d6b, 2.5, 2, 0.9);
@@ -89,10 +112,16 @@ export class Trafico {
   // Un modelo de cada clase: carga sus texturas y compila sus shaders antes de jugar.
   // Sin esto, el primer bus o combi trababa la partida al aparecer.
   tomarCatalogo() {
-    const clases = [["carro"], ["combi"], ["bus"], ["perro"], ["gato"], ["desmonte"], ["torito", { colorTorito: 0 }],
+    const clases = this.nivel2 ? this.catalogoNivel2() : [["carro"], ["combi"], ["bus"], ["perro"], ["gato"], ["desmonte"], ["torito", { colorTorito: 0 }],
       ...["senora", "viejo", "joven"].map((tipoPersona) => ["persona", { tipoPersona }]),
       ...[0, 1, 2].map((varianteObra) => ["obra", { varianteObra }])];
     return clases.map(([tipo, extra = {}]) => reserva.tomar(this.claveModelo(tipo, extra), () => this.crearModelo(tipo, extra)));
+  }
+
+  catalogoNivel2() {
+    return [["carro"], ["combi"], ["torito", { colorTorito: 0 }], ["busAzul"], ["paradero"], ["semaforo"], ["persona", { ciclista: true }],
+      ...COLORES_DEPORTIVO.map((_, colorDeportivo) => ["deportivo", { colorDeportivo }]),
+      ...["senora", "viejo", "joven"].map((tipoPersona) => ["persona", { tipoPersona }])];
   }
 
   devolverCatalogo(lista) {
@@ -104,6 +133,11 @@ export class Trafico {
     if (tipo === "torito") {
       extra.colorTorito ??= (Math.random() * COLORES_TORITO.length) | 0;
       return `torito|${extra.colorTorito}`;
+    }
+    if (extra.ciclista) return "ciclista";
+    if (tipo === "deportivo") {
+      extra.colorDeportivo ??= (Math.random() * COLORES_DEPORTIVO.length) | 0;
+      return `deportivo|${extra.colorDeportivo}`;
     }
     if (tipo === "persona") {
       extra.tipoPersona ??= elegir(["senora", "senora", "viejo", "joven"]);
@@ -121,6 +155,11 @@ export class Trafico {
     let r = Math.random() * pesos.reduce((suma, [, peso]) => suma + peso, 0);
     for (const [tipo, peso] of pesos) if ((r -= peso) <= 0) return tipo;
     return pesos[0][0];
+  }
+
+  // Pesos del barrio donde aparece el vehículo; si no tiene propios, los generales del nivel
+  tablaEn(s) {
+    return this.tablaTrafico.porBarrio?.[this.pista.barrio(s)] || this.tablaTrafico;
   }
 
   agregar(tipo, s, d, v, extra = {}) {
@@ -141,6 +180,7 @@ export class Trafico {
   sembrar() {
     const p = this.pista;
     const carrera = this.modo === "carrera";
+    if (this.nivel2) this.sembrarNivel2();
     if (carrera) {
       // Mismo motor que el jugador; cambian el roce y lo atentos que van a lo que viene delante.
       for (let i = 0; i < 3; i++) {
@@ -153,7 +193,7 @@ export class Trafico {
     } else {
       for (let s = p.finTierra + 30; s < p.meta - 60; s += 70 + Math.random() * 110) {
         const m = p.muestra(s);
-        if (Math.abs(m.k) > 0.02) continue;
+        if (Math.abs(m.k) > 0.02 || this.paraderos.some((x) => Math.abs(x - s) < 18)) continue;
         const lado = Math.random() < 0.5 ? -1 : 1;
         const tabla = this.tablaTrafico;
         this.agregar(tabla ? this.sortear(tabla.estacionados) : Math.random() < 0.8 ? "carro" : "torito", s, lado * (this.ancho / 2 - 1.0), 0, { estacionado: true, sentido: lado });
@@ -185,6 +225,124 @@ export class Trafico {
     }
   }
 
+  // Paraderos con bus azul, semáforos y autos que cruzan: solo en ciudad y San Isidro
+  sembrarNivel2() {
+    const p = this.pista;
+    this.paraderos = [];
+    this.sigDeportivo = 150;
+    this.tCiclista = 0;
+    const ciudad = p.tramosPuestos.filter((t) => t.barrio === "ciudad" || t.barrio === "sanIsidro");
+    if (!ciudad.length) return;
+    const fin = Math.min(ciudad[ciudad.length - 1].s1, p.meta - 40);
+    const recta = (s, antes, despues) => [s - antes, s, s + despues].every((x) => Math.abs(p.muestra(x, this.muestra).k) < 0.005);
+    // Si el punto cae en curva se busca la siguiente recta, en vez de perder la parada
+    for (let s = 120; s < fin - 40;) {
+      if (!recta(s, 14, 10)) { s += 15; continue; }
+      this.paraderos.push(s);
+      // sentido -1: el paradero abre hacia la calzada desde la vereda derecha
+      this.agregar("paradero", s + 8, this.ancho / 2 + this.vereda * 0.6, 0, { estatico: true, decorado: true, sentido: -1 });
+      if (Math.random() < 0.6) {
+        const bus = this.agregar("busAzul", s, 0, 0, { enParada: true, ultimaParada: s });
+        bus.d = this.ancho / 2 - bus.ancho / 2 - 0.2;
+      }
+      s += 170 + Math.random() * 110;
+    }
+    for (let s = 220; s < fin - 60;) {
+      if (!recta(s, 45, 15) || this.paraderos.some((x) => Math.abs(x - s) < 45)) { s += 15; continue; }
+      const semaforo = this.agregar("semaforo", s + 3, -(this.ancho / 2 + 0.5), 0, { estatico: true, decorado: true, sentido: -1 });
+      modelosN2.ponerSemaforo(semaforo.modelo, "verde");
+      const lado = Math.random() < 0.5 ? -1 : 1;
+      const auto = this.agregar("carro", s, lado * (this.ancho / 2 + this.vereda + FUERA_DE_CALLE), 0, {
+        cruzando: true, esperando: true, lado, semaforo,
+        tCruce: CRUCE_ESPERA + Math.random() * (CRUCE_ESPERA_MAX - CRUCE_ESPERA),
+      });
+      [auto.largo, auto.ancho] = [auto.ancho, auto.largo];   // va atravesado: su largo ocupa la calle
+      s += 230 + Math.random() * 140;
+    }
+  }
+
+  // Deportivos que te pasan por el lado y ciclistas en el malecón
+  actualizarNivel2(dt, veh) {
+    const p = this.pista;
+    if (veh.s >= this.sigDeportivo) {
+      const barrio = p.barrio(veh.s);
+      const sirve = veh.estado === "ok" && veh.v > 6 && barrio !== "bajada" && barrio !== "playa" && veh.s + 300 < p.meta;
+      const dLibre = this.ancho / 2 - 1.1;
+      const d = Math.max(-dLibre, Math.min(dLibre, veh.d + (veh.d >= 0 ? -3 : 3)));
+      const s = veh.s - 50;
+      if (sirve && !this.agentes.some((a) => !a.decorado && Math.abs(a.s - s) < 10 && Math.abs(a.d - d) < 3)) {
+        this.agregar("deportivo", s, d, Math.max(veh.v * 1.3, 8), { deportivo: true, decorado: true });
+        this.sigDeportivo = veh.s + 500 + Math.random() * 300;
+      } else this.sigDeportivo = veh.s + 30;
+    }
+    this.tCiclista -= dt;
+    if (this.tCiclista <= 0) {
+      this.tCiclista = 4 + Math.random() * 3;
+      const s = veh.s + 130, sentido = Math.random() < 0.6 ? 1 : -1;
+      if (p.barrio(s) === "malecon" && s < p.meta - 20) {
+        this.agregar("persona", s, sentido * (this.ancho / 2 - 0.7), sentido * CICLISTA_V, { ciclista: true, caminante: true, sentido });
+      }
+    }
+  }
+
+  // Semáforo y auto que espera tras las fachadas: todo se mide en segundos hasta que llegue el jugador
+  moverCruce(a, dt, veh) {
+    if (a.esperando) {
+      if (a.s < veh.s) { a.retirar = true; return; }
+      const t = (a.s - veh.s) / Math.max(veh.v, 6);
+      if (a.semaforo) modelosN2.ponerSemaforo(a.semaforo.modelo, t < SEMAFORO_ROJO ? "rojo" : t < SEMAFORO_AMBAR ? "ambar" : "verde");
+      if (t < a.tCruce) {
+        a.esperando = false;
+        a.vd = -a.lado * VEL_CRUCE;
+        this.noticias.push(a.lado > 0 ? "¡Sale un auto por la derecha!" : "¡Sale un auto por la izquierda!");
+      }
+      return;
+    }
+    if (a.tParado > 0) return;
+    a.d += a.vd * dt;
+    if (a.d * a.vd > 0 && Math.abs(a.d) > this.ancho / 2 + this.vereda + FUERA_DE_CALLE) a.retirar = true;
+  }
+
+  // No choca con nadie: va separado del jugador y esquiva lo que tenga delante
+  moverDeportivo(a, dt, veh) {
+    if (a.s < veh.s) a.v = Math.max(veh.v * 1.3, 8);
+    if (!a.avisado && a.s > veh.s - 16) {
+      a.avisado = true;
+      this.noticias.push(a.d < veh.d ? "¡Deportivo por tu izquierda!" : "¡Deportivo por tu derecha!");
+    }
+    const dLibre = this.ancho / 2 - 1.1;
+    let objetivo = a.d, delante = null;
+    for (const o of this.agentes) {
+      if (o === a || o.decorado || o.chocado || o.esperando || o.s <= a.s || o.s - a.s > 22) continue;
+      if (Math.abs(o.d - a.d) < (o.ancho + a.ancho) / 2 + 0.3 && (!delante || o.s < delante.s)) delante = o;
+    }
+    if (delante) {
+      const paso = (delante.ancho + a.ancho) / 2 + 0.6;
+      objetivo = delante.d >= 0 ? delante.d - paso : delante.d + paso;
+      if (delante.s - a.s < 9) a.v = Math.min(a.v, Math.max(delante.v, 2));
+    }
+    if (Math.abs(veh.s - a.s) < 12) objetivo = a.d >= veh.d ? Math.max(objetivo, veh.d + 2.2) : Math.min(objetivo, veh.d - 2.2);
+    objetivo = Math.max(-dLibre, Math.min(dLibre, objetivo));
+    a.d += Math.max(-3 * dt, Math.min(3 * dt, objetivo - a.d));
+    if (a.s > veh.s + 240) a.retirar = true;
+  }
+
+  // Bus que baja: para en cada paradero; el sembrado en uno sale cuando el jugador lo pasa
+  moverBus(a, veh) {
+    if (a.enParada) {
+      if (veh.s > a.s + 5) { a.enParada = false; a.v = 5; }
+      return;
+    }
+    if (a.sentido === -1 || a.tParado > 0) return;
+    const parada = this.paraderos.find((x) => x > a.s);
+    if (parada !== undefined && parada - a.s < 7 && a.ultimaParada !== parada) {
+      a.ultimaParada = parada;
+      a.vAntes = a.v;
+      a.v = 0;
+      a.tParado = BUS_PARADO;
+    }
+  }
+
   colocar(a) {
     if ((a.estatico || a.estacionado) && a.colocado) return;
     a.colocado = (a.estatico || a.estacionado) && a.d !== 0;
@@ -192,10 +350,10 @@ export class Trafico {
     const h = this.pista.alturaLateral(a.d, a.s);
     this.pista.aMundo(a.s, a.d, h, a.modelo.position, m);
     let rumbo = m.th;
-    if (a.peaton) rumbo += a.vd !== 0 ? Math.sign(a.vd) * Math.PI / 2 : (a.lado > 0 ? -Math.PI / 2 : Math.PI / 2);
+    if (a.peaton || a.cruzando) rumbo += a.vd !== 0 ? Math.sign(a.vd) * Math.PI / 2 : (a.lado > 0 ? -Math.PI / 2 : Math.PI / 2);
     else if (a.v < 0 || a.sentido < 0) rumbo += Math.PI;
     a.modelo.rotation.set(0, -rumbo + (a.giroExtra || 0), 0, "YXZ");
-    if (!a.peaton && !a.caminante) a.modelo.rotation.x = -Math.atan(m.g) * (a.v < 0 || a.sentido < 0 ? -1 : 1);
+    if (!a.peaton && !a.caminante && !a.cruzando) a.modelo.rotation.x = -Math.atan(m.g) * (a.v < 0 || a.sentido < 0 ? -1 : 1);
   }
 
   // Devuelve todos los modelos a la reserva (al reiniciar o al cambiar de partida)
@@ -241,7 +399,7 @@ export class Trafico {
       const s = base() + 180 + Math.random() * 60;
       if (s < p.meta - 20) {
         const r = Math.random();
-        const tipo = this.tablaTrafico ? this.sortear(this.tablaTrafico.suben) : p.enTierra(s) ? "torito" : r < 0.4 ? "carro" : r < 0.65 ? "torito" : r < 0.9 ? "combi" : "bus";
+        const tipo = this.tablaTrafico ? this.sortear(this.tablaEn(s).suben) : p.enTierra(s) ? "torito" : r < 0.4 ? "carro" : r < 0.65 ? "torito" : r < 0.9 ? "combi" : "bus";
         this.agregar(tipo, s, -this.ancho / 4, -(5 + Math.random() * 5), { sentido: -1 });
       }
     }
@@ -264,11 +422,13 @@ export class Trafico {
         const s = veh.s + 140;
         if (s < p.meta - 60) {
           const r = Math.random();
-          const tipo = this.tablaTrafico ? this.sortear(this.tablaTrafico.bajan) : p.enTierra(s) ? "torito" : r < 0.45 ? "torito" : r < 0.85 ? "combi" : "bus";
+          const tipo = this.tablaTrafico ? this.sortear(this.tablaEn(s).bajan) : p.enTierra(s) ? "torito" : r < 0.45 ? "torito" : r < 0.85 ? "combi" : "bus";
           this.agregar(tipo, s, this.ancho / 4, 3 + Math.random() * 3);
         }
       }
     }
+
+    if (this.nivel2) this.actualizarNivel2(dt, veh);
 
     let choque = null;
     for (const a of this.agentes) {
@@ -286,8 +446,11 @@ export class Trafico {
         if (a.vd !== 0 && !a.chocado) animarCaminar(a.modelo, this.tiempo * (a.tipo === "persona" ? 1.3 : 2));
       } else if (!a.chocado) {
         if (a.tParado > 0 && (a.tParado -= dt) <= 0) a.v = a.vAntes;
+        if (a.cruzando) this.moverCruce(a, dt, veh);
+        else if (a.deportivo) this.moverDeportivo(a, dt, veh);
+        else if (a.tipo === "busAzul") this.moverBus(a, veh);
         a.s += a.v * dt;
-        if (a.caminante) animarCaminar(a.modelo, this.tiempo * 1.3);
+        if (a.caminante && !a.ciclista) animarCaminar(a.modelo, this.tiempo * 1.3);
         // Los que bajan despacio frenan si tienen a alguien delante
         const giroRueda = (a.v * dt) / 0.3;
         for (const r of a.modelo.userData.ruedas || []) r.rotation.x -= giroRueda;
@@ -300,11 +463,11 @@ export class Trafico {
       if (!a.chocado) {
         const alcance = a.rival ? ALCANCE_RIVAL : ALCANCE_AGENTE;
         const dx = a.modelo.position.x - enMundo.x, dz = a.modelo.position.z - enMundo.z;
-        a.modelo.visible = dx * dx + dz * dz < alcance * alcance;
+        a.modelo.visible = dx * dx + dz * dz < alcance * alcance && !(a.cruzando && a.esperando);
       }
 
       // Colisión con el jugador (cajas en s/d)
-      if (!choque && !a.chocado && veh.estado === "ok" && veh.h < 0.8 && !veh.invulnerable) {
+      if (!choque && !a.chocado && !a.decorado && veh.estado === "ok" && veh.h < 0.8 && !veh.invulnerable) {
         const ds = Math.abs(a.s - veh.s), dd = Math.abs(a.d - veh.d);
         if (ds < (a.largo + LARGO_TORITO) * 0.45 && dd < (a.ancho + ANCHO_TORITO) * 0.45) {
           a.chocado = true;
@@ -320,7 +483,7 @@ export class Trafico {
     // Retirar lo que quedó muy atrás (los rivales siguen en la clasificación)
     let restantes = 0;
     for (const a of this.agentes) {
-      const fuera = !a.rival && (a.s < veh.s - 60 || a.s > p.largo);
+      const fuera = !a.rival && (a.s < veh.s - 60 || a.s > p.largo || a.retirar);
       if (fuera) reserva.devolver(a.modelo, modelos.liberarRecursos);
       else this.agentes[restantes++] = a;
     }
@@ -341,7 +504,7 @@ export class Trafico {
   obstaculo(a, carril, distancia, veh) {
     let cerca = null;
     for (const o of this.agentes) {
-      if (o === a || o.chocado || o.termino || o.s <= a.s || o.s - a.s > distancia) continue;
+      if (o === a || o.chocado || o.termino || o.decorado || o.s <= a.s || o.s - a.s > distancia) continue;
       if (o.peaton && Math.abs(o.d) > this.ancho / 2) continue;   // en la vereda no estorba
       if (Math.abs(o.d - carril) > (o.ancho + ANCHO_TORITO) / 2 + 0.3) continue;
       if (!cerca || o.s < cerca.s) cerca = o;
@@ -354,7 +517,7 @@ export class Trafico {
   // ¿Hay alguien al lado en ese carril? (no se cambia de carril encima de otro)
   lateralOcupado(a, carril, veh) {
     if (veh.estado === "ok" && Math.abs(veh.s - a.s) < 6 && Math.abs(veh.d - carril) < 1.5) return true;
-    return this.agentes.some((o) => o !== a && !o.termino && !o.chocado && Math.abs(o.s - a.s) < 6 && Math.abs(o.d - carril) < 1.5);
+    return this.agentes.some((o) => o !== a && !o.termino && !o.chocado && !o.decorado && Math.abs(o.s - a.s) < 6 && Math.abs(o.d - carril) < 1.5);
   }
 
   actualizarRivales(dt, veh) {
@@ -439,7 +602,7 @@ export class Trafico {
   // Un rival que se come un auto o a una persona queda parado y pierde tiempo
   chocarRival(a, veh) {
     for (const o of this.agentes) {
-      if (o.rival || o.chocado) continue;
+      if (o.rival || o.chocado || o.decorado) continue;
       const encajeS = (a.largo + o.largo) * 0.45 - Math.abs(a.s - o.s);
       if (encajeS <= 0 || Math.abs(a.d - o.d) >= (a.ancho + o.ancho) * 0.45) continue;
       if (o.tipo === "persona") {

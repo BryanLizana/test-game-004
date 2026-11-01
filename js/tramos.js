@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { CHUNK } from "./pista.js?v=1.6.9";
-import { crearChoza, liberarRecursos } from "./modelos.js?v=1.6.9";
-import { reserva } from "./reciclaje.js?v=1.6.9";
+import { CHUNK } from "./pista.js?v=1.7.0";
+import { crearChoza, liberarRecursos } from "./modelos.js?v=1.7.0";
+import { reserva } from "./reciclaje.js?v=1.7.0";
 
 // Carga por tramos: solo existen los bloques cercanos al torito. Al avanzar se piden los de
 // adelante a un Web Worker (que calcula la geometría fuera del hilo principal), se montan al
@@ -18,7 +18,7 @@ const ALCANCE_VISTA = 430;  // el fundido con el cielo termina a 420 m
 // baches, letreros…): casi no se distinguen y son la mayoría de las llamadas de dibujo.
 const DETALLE_LEJOS = 150;
 const TERRENO_LEJOS = 200;   // m hasta la losa desde donde se usa su versión simple
-const ES_DETALLE = /^(bache|reparacion|grieta|huella|letreros|porton|grafiti|reja)/;
+const ES_DETALLE = /^(bache|reparacion|grieta|huella|letreros|porton|grafiti|reja|vitrinas)/;
 const SIEMPRE_VISIBLE = new Set(["geoCruzPalo", "geoCruzBrazo"]);   // la cruz del cerro se ve de lejos
 
 // Un solo worker para todo el juego: se reutiliza entre partidas
@@ -26,7 +26,7 @@ let obrero = null, obreroFallo = false;
 function obtenerObrero() {
   if (obrero || obreroFallo || typeof Worker === "undefined") return obrero;
   try {
-    obrero = new Worker(new URL("./obrero-pista.js?v=1.6.9", import.meta.url), { type: "module" });
+    obrero = new Worker(new URL("./obrero-pista.js?v=1.7.0", import.meta.url), { type: "module" });
     obrero.addEventListener("error", () => { obreroFallo = true; obrero = null; });
   } catch (_) {
     obreroFallo = true;

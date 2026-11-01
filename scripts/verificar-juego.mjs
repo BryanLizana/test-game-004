@@ -118,7 +118,7 @@ for (const semilla of [1, 42, 12345, 87654]) {
   const codigo = leer("js/pista.js");
   const seccion = codigo.slice(codigo.indexOf("    const vereda = nuevo();"), codigo.indexOf("    // Miradores: baranda"));
   const construir = vm.runInNewContext(`(function(i0, i1) {
-    const iT = Math.round(this.finTierra), v = new Vector3();
+    const iT = Math.round(this.finTierra), iA = Infinity, v = new Vector3();
     ${seccion}
   })`, {
     Vector3, ANCHO: 7, VEREDA: 1.6, mat: { vereda: 1, tierra: 2, asfalto: 3 },
@@ -192,7 +192,8 @@ const modelosSimple = Object.fromEntries(["crearCarro", "crearTorito", "crearPer
 modelosSimple.animarCaminar = modelosSimple.liberarRecursos = () => {};
 const azarFijo = Object.create(Math); azarFijo.random = () => 0.6;
 const reservaSimple = { tomar: (_clave, crear) => crear(), devolver() {} };
-const Trafico = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, ROCE_MOTOR: 0.06, aceleracionBajada, modelos: modelosSimple, reserva: reservaSimple, Math: azarFijo });
+const modelosN2Simple = { ...Object.fromEntries(["crearBusAzul", "crearDeportivo", "crearParadero", "crearSemaforo", "crearCiclista"].map((k) => [k, modeloSimple])), ponerSemaforo: (m, estado) => { m.userData.estado = estado; } };
+const Trafico = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, ROCE_MOTOR: 0.06, aceleracionBajada, modelos: modelosSimple, modelosN2: modelosN2Simple, reserva: reservaSimple, Math: azarFijo });
 const circuito = {
   largo: 1000, meta: 940, finTierra: 200, cruces: [300, 500, 700],
   muestra: (_s, out = {}) => Object.assign(out, { g: 0.15, k: 0.06, th: 0 }),
@@ -334,7 +335,7 @@ for (const semilla of [3, 42, 777, 2026]) {
   const p = new Pista(5, 2);
   const t = new Trafico(escenaSimple, p, "sinFrenos");
   assert.ok(t.agentes.length > 5);
-  assert.ok(t.agentes.every((a) => a.tipo === "carro" || a.tipo === "persona"), "tráfico sembrado del nivel 2");
+  assert.ok(t.agentes.every((a) => ["carro", "persona", "busAzul", "paradero", "semaforo"].includes(a.tipo)), "tráfico sembrado del nivel 2");
   assert.ok(t.agentes.filter((a) => a.tipo === "carro").every((a) => Math.abs(a.d) > 3.5), "estacionados al borde de la calle ancha");
   const veh = { s: 300, d: 2.6, v: 15, h: 0, estado: "ok", invulnerable: true };
   for (let i = 0; i < 2400; i++) t.actualizar(1 / 60, veh);
@@ -362,5 +363,97 @@ assert.ok(rival.s - sRetraso < 1, "durante el retraso el rival no avanza");
 const traficoOriginal = new Trafico(escenaSimple, circuito);
 assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "persona"));
 assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "desmonte"));
+// Nivel 2: paraderos, cruces, deportivos y ciclistas
+{
+  const TraficoAzar = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, ROCE_MOTOR: 0.06, aceleracionBajada, modelos: modelosSimple, modelosN2: modelosN2Simple, reserva: reservaSimple, Math });
+  const pruebaTipos = (semilla) => {
+    const p = new Pista(semilla, 2), t = new TraficoAzar(escenaSimple, p, "sinFrenos");
+    const finSan = p.tramosPuestos.find((x) => x.barrio === "sanIsidro").s1;
+    assert.ok(t.paraderos.length >= 3 && t.paraderos.every((s) => s < finSan), "paraderos solo en ciudad y San Isidro");
+    assert.ok(t.agentes.some((a) => a.cruzando), "hay autos que cruzan");
+    assert.ok(t.agentes.filter((a) => a.tipo === "semaforo").length === t.agentes.filter((a) => a.cruzando).length, "cada cruce tiene semáforo");
+    const veh = { s: 0, d: 2.6, v: 14, h: 0, estado: "ok", invulnerable: false };
+    const vistos = new Set();
+    let chocesDeportivo = 0, avisos = 0, busTrasBajada = 0;
+    for (let i = 0; i < 60 * 190 && veh.s < p.meta - 5; i++) {
+      veh.s += veh.v / 60;
+      const c = t.actualizar(1 / 60, veh);
+      if (c?.agente.deportivo) chocesDeportivo++;
+      if (c) c.agente.chocado = true;
+      for (const a of t.agentes) {
+        vistos.add(a.tipo);
+        if (a.ciclista) vistos.add("ciclista");
+        if (a.deportivo) vistos.add("deportivista");
+        if ((a.tipo === "busAzul" || a.tipo === "bus") && a.s > finSan + 260) busTrasBajada++;
+      }
+      avisos += t.noticias.length; t.noticias.length = 0;
+    }
+    assert.equal(chocesDeportivo, 0, "el deportivo no choca al jugador");
+    assert.equal(busTrasBajada, 0, "no hay buses desde la bajada");
+    assert.ok(vistos.has("deportivista") && vistos.has("ciclista") && vistos.has("busAzul"), "salen deportivos, ciclistas y buses azules");
+    assert.ok(avisos > 2, "cruces y deportivos avisan");
+    assert.ok(!["torito", "perro", "gato", "obra", "desmonte", "bus"].some((x) => vistos.has(x)), "nada ajeno al nivel 2");
+  };
+  [1, 7, 21].forEach(pruebaTipos);
+  // Un bus en paradero tapa el carril derecho y deja libre el izquierdo
+  {
+    const p = new Pista(3, 2), t = new TraficoAzar(escenaSimple, p, "sinFrenos");
+    const veh = { s: 20, d: 2.6, v: 14, h: 0, estado: "ok", invulnerable: true };
+    const bus = t.agregar("busAzul", 400, 3.7, 0, { enParada: true });
+    t.actualizar(1 / 60, veh);
+    assert.equal(bus.v, 0, "espera en el paradero");
+    veh.s = 406; t.actualizar(1 / 60, veh);
+    assert.ok(bus.v > 0, "sale cuando el jugador pasó");
+    const movil = t.agregar("busAzul", t.paraderos[0] - 8, 2.6, 5);
+    movil.ultimaParada = null;
+    veh.s = t.paraderos[0] - 30;
+    for (let i = 0; i < 40; i++) t.actualizar(1 / 60, veh);
+    assert.ok(movil.v === 0 && movil.tParado > 0, "el bus que baja se detiene en el paradero");
+    for (let i = 0; i < 300; i++) t.actualizar(1 / 60, veh);
+    assert.ok(movil.v === 5, "y retoma");
+  }
+  // Carrera en el nivel 2: los rivales llegan a la meta entre paraderos y cruces, sin colgarse
+  {
+    const p = new Pista(4, 2), t = new TraficoAzar(escenaSimple, p, "carrera");
+    const veh = { s: 0, d: 2.6, v: 14, h: 0, estado: "ok", invulnerable: true };
+    let i = 0;
+    for (; i < 60 * 400 && !t.agentes.filter((a) => a.rival).every((a) => a.termino); i++) { veh.s = Math.min(veh.s + veh.v / 60, p.meta - 1); t.actualizar(1 / 60, veh); }
+    assert.ok(t.agentes.filter((a) => a.rival).every((a) => a.termino), "los rivales terminan el nivel 2");
+    console.log(`OK: rivales del nivel 2 terminan en ${Math.round(i / 60)} s.`);
+  }
+  // Salida justa: desde cualquier punto de la calle, un jugador que pasa por detrás del auto no choca
+  const simular = (esquiva) => {
+  let simuladas = 0, golpes = 0;
+  for (const semilla of [2, 9, 15]) for (const d0 of [-2.6, 0, 2.6]) {
+    const p = new Pista(semilla, 2);
+    const t = new TraficoAzar(escenaSimple, p, "sinFrenos");
+    t.tSubida = t.tLento = 1e9; t.sigDeportivo = 1e9;
+    const cruces = t.agentes.filter((a) => a.cruzando);
+    t.agentes = cruces.concat(t.agentes.filter((a) => a.tipo === "semaforo"));
+    for (const a of cruces) {
+      const v = new Vehiculo(p);
+      v.s = a.s - 110; v.d = d0; v.v = 14; v.psi = 0;
+      for (let i = 0; i < 60 * 12 && v.s < a.s + 10; i++) {
+        const activo = !a.esperando && !a.retirar;
+        const objetivo = esquiva && activo ? a.lado * 3.8 : d0;      // detrás del auto: por el lado de donde sale
+        const psi = Math.max(-0.3, Math.min(0.3, (objetivo - v.d) * 0.3));
+        const giro = Math.max(-1, Math.min(1, (psi - v.psi) * 5));
+        v.paso(1 / 60, { giro, freno: false }, []);
+        if (v.estado !== "ok") break;
+        const c = t.actualizar(1 / 60, v);
+        if (c?.agente === a) { golpes++; break; }
+      }
+      simuladas++;
+      t.agentes = t.agentes.filter((o) => o !== a);
+      assert.ok(v.v * 3.6 > 30, "sigue a velocidad de juego");
+    }
+  }
+  return { simuladas, golpes };
+  };
+  const { simuladas, golpes } = simular(true), quieto = simular(false);
+  assert.ok(quieto.golpes > 0, "sin esquivar, el cruce sí es un peligro");
+  assert.ok(simuladas >= 9 && golpes === 0, `esquivando por detrás no se choca: ${golpes} de ${simuladas}`);
+  console.log(`OK: cruces del nivel 2 esquivados en ${simuladas - golpes} de ${simuladas} simulaciones; sin esquivar choca en ${quieto.golpes} de ${quieto.simuladas}.`);
+}
 console.log("OK: tres bots completan la carrera sin frenos; suben autos y personas; los rivales se retrasan al chocar; sin desmontes en Carrera; liberación global y centrado del timón.");
 console.log(`OK: Carrera con la física de Sin frenos, freno gastado, modo original, multitouch y ${muestras} muestras de veredas; geometrías de 4 pistas sin valores inválidos.`);

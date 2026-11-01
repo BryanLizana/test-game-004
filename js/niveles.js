@@ -8,7 +8,7 @@ export const NIVELES = {
     mensajeMeta: "¡Llegaste a la avenida con vida!",
   },
   2: {
-    id: 2, ancho: 10.5, vereda: 2.4, fondo: 10, carril: 2.6, terreno: "llano",
+    id: 2, ancho: 10.5, vereda: 2.4, fondo: 10, carril: 2.6, terreno: "llano", costa: true,
     deterioro: 0.3, rugosidad: 0.5, rocePlaya: 3, veredaLisa: true,
     textoArco: "PLAYA AGUA DULCE",
     avisoInicio: "¡Se trabó el acelerador!",
@@ -25,18 +25,23 @@ export const NIVELES = {
     ],
     // Reglas de lote por barrio: rangos [mínimo, máximo] y probabilidades
     barrios: {
-      ciudad: { ancho: [10, 16], pisos: [4, 7], negocio: 0.7, jardin: 0, muro: 0.02, parque: 0.02 },
-      sanIsidro: { ancho: [12, 20], pisos: [6, 10], negocio: 0.55, jardin: 0.2, muro: 0, parque: 0.08 },
-      chorrillos: { ancho: [7, 11], pisos: [2, 3], negocio: 0.3, jardin: 0.15, muro: 0.08, parque: 0.02 },
-      bajada: { ancho: [8, 12], pisos: [1, 3], negocio: 0.1, jardin: 0.1, muro: 0.25, parque: 0 },
-      malecon: { ancho: [10, 14], pisos: [3, 5], negocio: 0.4, jardin: 0.15, muro: 0, parque: 0.03 },
-      playa: { sinCasas: true },
+      ciudad: { ancho: [10, 16], pisos: [4, 7], negocio: 0.7, jardin: 0, muro: 0.02, parque: 0.02, fachadas: [0, 1, 2, 3], letrero: true, sinCables: true },
+      sanIsidro: { ancho: [12, 20], pisos: [6, 10], negocio: 0.55, jardin: 0.2, muro: 0, parque: 0.1, parqueLargo: [40, 70], fachadas: [4, 5, 6, 7], sinCables: true },
+      chorrillos: { ancho: [7, 11], pisos: [2, 3], negocio: 0.3, jardin: 0.15, muro: 0.08, parque: 0.02, fachadas: [8, 9, 10], letrero: true },
+      bajada: { ancho: [8, 12], pisos: [1, 3], negocio: 0.1, jardin: 0.1, muro: 0.25, parque: 0, fachadas: [8, 9, 10] },
+      malecon: { ancho: [10, 14], pisos: [3, 5], negocio: 0.4, jardin: 0.15, muro: 0, parque: 0.03, fachadas: [1, 3, 5, 8, 9], letrero: true, sinCables: true },
+      playa: { sinCasas: true, sinCables: true },
     },
-    // Pesos del tráfico por lista de [tipo, peso]; sin toritos, animales ni obras
+    // Pesos del tráfico por lista de [tipo, peso]; sin toritos, animales ni obras.
+    // El Corredor Azul solo anda por ciudad y San Isidro: de la bajada en adelante no hay buses.
     trafico: {
       estacionados: [["carro", 1]],
-      suben: [["carro", 0.55], ["combi", 0.25], ["bus", 0.2]],
-      bajan: [["carro", 0.5], ["combi", 0.3], ["bus", 0.2]],
+      suben: [["carro", 0.75], ["combi", 0.25]],
+      bajan: [["carro", 0.7], ["combi", 0.3]],
+      porBarrio: {
+        ciudad: { suben: [["carro", 0.55], ["combi", 0.15], ["busAzul", 0.3]], bajan: [["carro", 0.45], ["combi", 0.15], ["busAzul", 0.4]] },
+        sanIsidro: { suben: [["carro", 0.65], ["busAzul", 0.35]], bajan: [["carro", 0.55], ["busAzul", 0.45]] },
+      },
       animales: false, obras: false,
     },
   },

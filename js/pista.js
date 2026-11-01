@@ -1,5 +1,5 @@
-import * as THREE from "./three.js?v=1.6.9";
-import { nivelDe } from "./niveles.js?v=1.6.9";
+import * as THREE from "./three.js?v=1.7.0";
+import { nivelDe } from "./niveles.js?v=1.7.0";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -14,6 +14,7 @@ export const TINTES_FACHADA = [0xffffff, 0xf2d6c2, 0xd4deec, 0xa9d5c8, 0xf1d184,
 export const TINTES_PARED = [0xd7bf8c, 0xa1b9ad, 0xc9a39b, 0xaabcc4, 0xd6cdad, 0xb99a77];
 // Las 4 fotos de fachada van en un atlas 2x2: la celda se guarda sumando 100·celda a la u
 export const CELDA_ATLAS = 100;
+const TINTES_ATLAS = [0xffffff, 0xf2efe8, 0xe8edf2];   // leve variación entre edificios del atlas del nivel 2
 
 // Color hex (sRGB) → lineal, como lo espera el atributo de color de los vértices
 function lineal(hex) {
@@ -166,6 +167,7 @@ export class Pista {
     this.generarTrazado();
     this.prepararTerreno();
     this.generarDetalles();
+    if (this.nivel.costa) this.prepararCosta();
   }
 
   // ---------- Trazado ----------
@@ -326,8 +328,54 @@ export class Pista {
     return this.plano.a + this.plano.gx * x + this.plano.gz * z - 0.003 * caida * caida;
   }
 
-  // Altura del terreno en un punto del mundo
+  // Costa del nivel: a la derecha de la bajada y del malecón, y más allá de la playa, el terreno cae al mar
+  prepararCosta() {
+    const bajada = this.tramosPuestos.find((t) => t.barrio === "bajada");
+    this.sCosta = bajada.s0;
+    this.marY = this.y[this.n - 1] - 1.2;
+    this._costa = [];
+    for (let j = Math.round(bajada.s0 / PASO); j < this.n; j += 8) this._costa.push(j);
+    this._costa.push(this.n - 1);
+  }
+
+  // Dónde cae un punto respecto de la costa: dMar > 0 es lado del mar, medido desde el borde de la calle
+  costaEn(x, z) {
+    let mejor = Infinity, jm = -1;
+    for (const j of this._costa) {
+      const d2 = (this.x[j] - x) ** 2 + (this.z[j] - z) ** 2;
+      if (d2 < mejor) { mejor = d2; jm = j; }
+    }
+    const c = Math.cos(this.th[jm]), sn = Math.sin(this.th[jm]);
+    const dx = x - this.x[jm], dz = z - this.z[jm];
+    const lateral = dx * c + dz * sn, delante = dx * sn - dz * c;
+    const enPlaya = this.barrios[jm] === "playa";
+    const borde = enPlaya ? 18 : this.ancho / 2 + this.vereda + 1;
+    let dMar = lateral - borde;
+    if (jm === this.n - 1 && delante > 0) dMar = Math.max(dMar, delante);
+    return { jm, dMar, enPlaya, dist: Math.sqrt(mejor) };
+  }
+
   alturaMundo(x, z) {
+    const h = this.alturaBase(x, z);
+    if (!this._costa) return h;
+    const { jm, dMar } = this.costaEn(x, z);
+    if (dMar <= 0) return h;
+    const entrada = Math.min(1, (jm * PASO - this.sCosta) / 90);   // el acantilado nace a lo largo de la bajada
+    const ancho = (this.y[jm] - this.marY) * 0.9 + 15;
+    const t = Math.min(1, dMar / ancho);
+    return h + (this.marY - 4 - h) * t * t * (3 - 2 * t) * entrada;
+  }
+
+  // Color del suelo por vértice: gris urbano, acantilado claro y arena junto al mar
+  tonoSuelo(x, y, z) {
+    const { dMar, enPlaya, dist } = this.costaEn(x, z);
+    if (y - this.marY < 2.2 || (enPlaya && dist < 60)) return [0.98, 0.86, 0.66];
+    if (dMar > 0) return [0.78, 0.68, 0.54];
+    return [0.5, 0.51, 0.53];
+  }
+
+  // Altura del terreno en un punto del mundo, sin la costa
+  alturaBase(x, z) {
     // Corrección del plano: promedio suave del desvío de la calle en 180 m a la redonda
     const R = 180;
     let suma = 0, pesos = 0;
@@ -486,9 +534,12 @@ export class Pista {
     const tramosNivel = this.tramosPuestos;
     this.miradores = [];
     if (tramosNivel) for (const t of tramosNivel) {
-      if (t.mirador === "corrido") this.miradores.push({ s0: t.s0, s1: t.s1, tipo: "concreto" });
-      else if (t.mirador) for (let s = t.s0 + 40; s < t.s1 - 60; s += 110 + r() * 60) {
-        this.miradores.push({ s0: s, s1: s + 60 + r() * 30, tipo: ["concreto", "guardavia", "valla", "nada"][(r() * 4) | 0] });
+      if (t.mirador === "corrido") this.miradores.push({ s0: t.s0, s1: t.s1, tipo: "malecon" });
+      else if (t.mirador) for (let s = t.s0; s < t.s1 - 1;) {
+        // Lado del mar sin casas: barreras seguidas, y algún tramo sin nada
+        const fin = Math.min(t.s1, s + 70 + r() * 40);
+        this.miradores.push({ s0: s, s1: fin, tipo: ["concreto", "guardavia", "valla", "nada"][(r() * 4) | 0] });
+        s = fin;
       }
     } else for (let s = this.finTierra + 120 + r() * 80; s < this.finCalle - 250; s += 280 + r() * 220) {
       const tipo = ["concreto", "guardavia", "valla", "nada"][(r() * 4) | 0];
@@ -595,23 +646,22 @@ export class Pista {
   }
 
   // Lote de un nivel con barrios por tabla. Devuelve dónde empieza el siguiente.
-  // Punto de enchufe: aquí se elige qué fachada usa cada barrio (hoy, las del nivel 1).
   loteNivel(lado, s, barrio, reglas) {
     const r = this.rand;
     if (reglas.sinCasas) return s + 6;
     const entre = ([a, b]) => a + r() * (b - a);
     if (s > 30 && r() < reglas.parque) {
-      const largo = 18 + r() * 14;
-      this.casas[lado].push({ s0: s, s1: s + largo, alto: 0, tex: 0, barrio, muro: false, parque: true,
-        retiro: 0, pintura: (r() * 6) | 0, negocio: -1, semilla: (r() * 1e9) | 0 });
+      const largo = reglas.parqueLargo ? entre(reglas.parqueLargo) : 18 + r() * 14;
+      this.casas[lado].push({ s0: s, s1: s + largo, alto: 0, tex: reglas.fachadas[(r() * reglas.fachadas.length) | 0], barrio, muro: false, parque: true,
+        altoFondo: 15 + r() * 12, retiro: 0, pintura: (r() * 6) | 0, negocio: -1, semilla: (r() * 1e9) | 0 });
       return s + largo;
     }
     const ancho = entre(reglas.ancho), pisos = Math.round(entre(reglas.pisos)), muro = r() < reglas.muro;
     const negocio = !muro && r() < reglas.negocio ? (r() * 4) | 0 : -1;
     this.casas[lado].push({
       s0: s, s1: s + ancho, alto: muro ? 1.7 + r() * 0.6 : pisos * 2.8 + 0.2 + r() * 0.3,
-      tex: 1 + ((r() * 3) | 0) + 4 * ((r() * 6) | 0), barrio, muro, pintura: (r() * 6) | 0, negocio,
-      tanque: !muro && r() < 0.3, fierros: false, semilla: (r() * 1e9) | 0,
+      tex: reglas.fachadas[(r() * reglas.fachadas.length) | 0], barrio, muro, pintura: (r() * 6) | 0, negocio,
+      letrero: !!reglas.letrero, tanque: !muro && pisos < 6 && r() < 0.3, fierros: false, semilla: (r() * 1e9) | 0,
       retiro: !muro && negocio < 0 && r() < reglas.jardin ? 2.4 + r() * 1.2 : 0,
     });
     return s + ancho;
@@ -671,7 +721,19 @@ export class Pista {
       malla(buf, material);
     };
     calzada(i0, Math.min(i1, iT), mat.tierra, 5);
-    calzada(Math.max(i0, iT), i1, mat.asfalto, 4);
+    // Pasada la meta del nivel por tramos ya no hay calle: arena abierta hasta el mar
+    const iA = this.nivel.tramos ? Math.round(this.meta / PASO) : Infinity;
+    calzada(Math.max(i0, iT), Math.min(i1, iA), mat.asfalto, 4);
+    if (i1 > iA) {
+      const a = Math.max(i0, iA), arena = nuevo(), borde = this.ancho / 2 + 8;
+      calzada(a, i1, mat.arenaN2, 6);
+      for (const sg of [-1, 1]) {
+        const ord = (p, q) => (sg < 0 ? [q, p] : [p, q]);
+        tira(arena, a, i1, (i) => ord({ d: sg * this.ancho / 2, h: 0, u: this.ancho / 12, v: i / 6 },
+          { d: sg * borde, h: this.alturaTerreno(i * PASO, sg * borde) + 0.03, u: borde / 6, v: i / 6 }));
+      }
+      malla(arena, mat.arenaN2);
+    }
     if (i0 < iT) this.construirCerro(salida, i0, Math.min(i1, iT), mat, tira, nuevo, malla);
 
     // Veredas mixtas con sardinel, rebajes y escaleras puntuales.
@@ -686,7 +748,7 @@ export class Pista {
       buf.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
     };
     const tierraVereda = nuevo(), juntas = nuevo(), cimientos = nuevo(), bordeTerreno = nuevo();
-    for (let i = Math.max(i0, iT); i < i1; i++) {
+    for (let i = Math.max(i0, iT); i < Math.min(i1, iA); i++) {
       for (const sg of [-1, 1]) {
         const dIn = sg * this.ancho / 2, dOut = sg * (this.ancho / 2 + this.vereda);
         const buf = this.tipoVereda(i + 0.5, sg) === "tierra" ? tierraVereda : vereda;
@@ -726,7 +788,7 @@ export class Pista {
     malla(tierraVereda, mat.tierra);
     malla(juntas, mat.asfalto);
     malla(cimientos, mat.muroLateral);
-    malla(bordeTerreno, mat.cerro);
+    malla(bordeTerreno, this.nivel.barrios ? mat.vereda : mat.cerro);
 
     // Miradores: baranda de concreto y la ladera cayendo hacia Lima
     for (const mir of this.miradores) {
@@ -740,6 +802,10 @@ export class Pista {
         tira(baranda, a, b, (i) => [{ d: dB, h: 0, u: i / 2, v: 0 }, { d: dB, h: H, u: i / 2, v: 0.3 }]);
         tira(baranda, a, b, (i) => [{ d: dB, h: H, u: i / 2, v: 0.3 }, { d: dB + G, h: H, u: i / 2, v: 0.35 }]);
         tira(baranda, a, b, (i) => [{ d: dB + G, h: this.alturaTerreno(i * PASO, dB + G) - 0.5, u: i / 2, v: 0 }, { d: dB + G, h: H, u: i / 2, v: 0.3 }]);
+      } else if (mir.tipo === "malecon") {
+        const reja = nuevo();
+        tira(reja, a, b, (i) => [{ d: dB, h: 0.1, u: i / 3, v: 0 }, { d: dB, h: 1.4, u: i / 3, v: 1 }]);
+        malla(reja, mat.barandaMalecon, false);
       } else if (mir.tipo === "guardavia") {
         const viga = nuevo();
         tira(viga, a, b, (i) => [{ d: dB - 0.1, h: 0.65, u: i / 4, v: 0 }, { d: dB - 0.1, h: 1.0, u: i / 4, v: 1 }]);
@@ -779,7 +845,8 @@ export class Pista {
     const techoDetalles = [];   // tanques y fierros sobre los techos
     const techos = nuevo(), muros = nuevo();
     const pared = { ...nuevo(), col: [] }, letreros = mat.letreros.map(() => nuevo());
-    const portones = nuevo(), grafitis = nuevo();
+    const portones = nuevo(), grafitis = nuevo(), vitrinas = nuevo(), carteles = nuevo();
+    const conAtlas = !!this.nivel.barrios;
     const pastos = nuevo(), rejas = nuevo(), caminos = nuevo(), pircas = nuevo();
     const verdes = { arbustos: [], copas: [], troncos: [], bancas: [] };
     [-1, 1].forEach((sg, lado) => {
@@ -793,6 +860,15 @@ export class Pista {
         if (casa.parque) {
           this.parque(casa, a, b, sg, dPared, dFondo, s0, s1, { pastos, rejas, caminos, pircas, murete: pared, verdes }, tira);
           tenir(pared, TINTES_PARED[casa.pintura]);
+          if (casa.altoFondo) {
+            // Edificios detrás del parque: en terreno llano, sin ellos se vería el suelo hasta el horizonte
+            const yBase = this.y[Math.round(casa.s0 / PASO)];
+            tira(fachada, a, b, (i) => {
+              const u = (i * PASO - casa.s0) / 8 + casa.tex * CELDA_ATLAS;
+              return [{ d: dFondo, h: -0.6, u, v: 0 }, { d: dFondo, h: yBase + casa.altoFondo - this.y[i], u, v: casa.altoFondo / 8.6 }];
+            });
+            tenir(fachada, TINTES_ATLAS[casa.pintura % 3]);
+          }
           continue;
         }
         const dFrente = dPared + sg * (casa.retiro || 0);
@@ -802,7 +878,7 @@ export class Pista {
         const anchoTex = 8, altoTex = 8.6;
         const yPiso = yTecho - casa.alto;
         const frente = casa.muro ? pared : fachada;
-        const celda = casa.muro ? 0 : (casa.tex % 4) * CELDA_ATLAS;
+        const celda = casa.muro ? 0 : (conAtlas ? casa.tex : casa.tex % 4) * CELDA_ATLAS;
         tira(frente, a, b, (i) => {
           const u = (i * PASO - casa.s0) / anchoTex + celda;
           return [
@@ -837,7 +913,8 @@ export class Pista {
         const centro = (casa.s0 + casa.s1) / 2;
         const ga = Math.max(a, Math.ceil(centro - (casa.muro ? 1.5 : 1.2)));
         const gb = Math.min(b, Math.floor(centro + (casa.muro ? 1.5 : 1.2)));
-        if ((casa.muro || casa.negocio >= 0) && gb > ga) {
+        if (conAtlas && casa.negocio >= 0) this.local(casa, a, b, sg, dPared, yPiso, centro, { vitrinas, carteles }, tira);
+        else if ((casa.muro || casa.negocio >= 0) && gb > ga) {
           tira(portones, ga, gb, (i) => [
             { d: dPared - sg * 0.025, h: yPiso + 0.18 - this.y[i], u: (i - ga) / 0.6, v: 0 },
             { d: dPared - sg * 0.025, h: yPiso + (casa.muro ? 1.55 : 2.15) - this.y[i], u: (i - ga) / 0.6, v: 1 },
@@ -883,11 +960,13 @@ export class Pista {
           const tope = Math.min(yTecho, techoDe(vecina));
           this.paredLateral(muros, iBorde * PASO, dPared + sg * (vecina.retiro || 0), dFrente, this.y[iBorde] - 0.6, tope, yPiso, altoTex);
         }
-        tenir(fachada, TINTES_FACHADA[Math.floor(casa.tex / 4)]);
+        tenir(fachada, conAtlas ? TINTES_ATLAS[casa.pintura % 3] : TINTES_FACHADA[Math.floor(casa.tex / 4)]);
         tenir(pared, TINTES_PARED[casa.pintura]);
       }
     });
-    malla(fachada, mat.fachada);
+    malla(fachada, conAtlas ? mat.fachadaN2 : mat.fachada);
+    malla(vitrinas, mat.vitrinas, false);
+    malla(carteles, mat.letrerosN2, false);
     malla(pared, mat.pared);
     letreros.forEach((f, i) => malla(f, mat.letreros[i]));
     malla(portones, mat.porton);
@@ -908,13 +987,14 @@ export class Pista {
 
     // Postes y cables
     const lineas = [], postesMadera = [], postesMetal = [];
-    const postes = this.postes.filter((p) => p.s >= s0 - 40 && p.s < s1);
+    const reglasDe = (s) => this.nivel.barrios && this.nivel.barrios[this.barrio(s)];
+    const postes = this.postes.filter((p) => p.s >= s0 - 40 && p.s < s1 && this.barrio(p.s) !== "playa");
     for (let j = 0; j < postes.length; j++) {
       const p = postes[j];
       const d = p.lado * (this.ancho / 2 + 0.35);
       if (p.s >= s0) (p.s < this.finTierra ? postesMadera : postesMetal).push(p);
       const q = postes[j + 1];
-      if (q) {
+      if (q && !(reglasDe(p.s) && reglasDe(p.s).sinCables)) {
         const a = this.aMundo(p.s, d, 7.6), b = this.aMundo(q.s, q.lado * (this.ancho / 2 + 0.35), 7.6);
         for (const off of [0, 0.35, -0.4]) {
           let prev = null;
@@ -946,6 +1026,27 @@ export class Pista {
       return { x: p.x, y: p.y, z: p.z, rx: -Math.atan(m.g), ry: -m.th };
     }));
     this.instanciasLibres(salida, mat.geoRompemuelle, mat.rompemuelle, rompe, false);
+  }
+
+  // Local a pie de calle: vitrinas de 5 m tomadas del atlas 2x2 y, en algunos barrios, un letrero del atlas 4x4
+  local(casa, a, b, sg, dPared, yPiso, centro, buf, tira) {
+    const celda = casa.negocio, u0 = (celda % 2) * 0.5, v0 = 0.5 - Math.floor(celda / 2) * 0.5;
+    for (let p = a; p + 5 <= b; p += 5) {
+      const u = (i) => u0 + (sg < 0 ? (i - p) / 5 : 1 - (i - p) / 5) * 0.5;
+      tira(buf.vitrinas, p, p + 5, (i) => [
+        { d: dPared - sg * 0.03, h: yPiso + 0.15 - this.y[i], u: u(i), v: v0 },
+        { d: dPared - sg * 0.03, h: yPiso + 3 - this.y[i], u: u(i), v: v0 + 0.5 },
+      ]);
+    }
+    if (!casa.letrero) return;
+    const c = casa.semilla % 16, cu = (c % 4) / 4, cv = 0.75 - Math.floor(c / 4) / 4;
+    const la = Math.max(a, Math.round(centro / PASO) - 3), lb = Math.min(b, la + 6);
+    if (lb <= la) return;
+    const u = (i) => cu + (sg < 0 ? (i - la) / (lb - la) : 1 - (i - la) / (lb - la)) * 0.25;
+    tira(buf.carteles, la, lb, (i) => [
+      { d: dPared - sg * 0.05, h: yPiso + 3.05 - this.y[i], u: u(i), v: cv },
+      { d: dPared - sg * 0.05, h: yPiso + 4.25 - this.y[i], u: u(i), v: cv + 0.25 },
+    ]);
   }
 
   // Pared vertical en el costado s, entre dos distancias al eje y dos cotas del mundo
@@ -1028,7 +1129,7 @@ export class Pista {
       if (s >= s0 && s < s1) this.cercoLateral(s + dentro, dPared, dFondo, buf);
     }
     // Muro de contención: sostiene el cerro que sube atrás o hace de parapeto si el cerro baja
-    tira(buf.pircas, a, b, (i) => {
+    if (this.nivel.terreno !== "llano") tira(buf.pircas, a, b, (i) => {
       const hT = this.alturaTerreno(i * PASO, dFondo);
       return [{ d: dFondo, h: Math.min(JARDIN_ALTO, hT) - 0.5, u: i / 3, v: 0 },
               { d: dFondo, h: Math.max(JARDIN_ALTO + 0.8, hT + 0.3), u: i / 3, v: Math.abs(hT - JARDIN_ALTO) / 3 + 0.4 }];
@@ -1060,10 +1161,12 @@ export class Pista {
     const { x0, z0 } = this.losas[indice - this.numBloques];
     const N = Math.round(LOSA / PASO_LOSA) + 1;
     const pos = new Float32Array(N * N * 3), uv = new Float32Array(N * N * 2), idx = new Uint32Array((N - 1) * (N - 1) * 6);
+    const col = this._costa ? new Float32Array(N * N * 3) : null;
     for (let a = 0; a < N; a++) for (let b = 0; b < N; b++) {
       const k = a * N + b, x = x0 + a * PASO_LOSA, z = z0 + b * PASO_LOSA;
       pos.set([x, this.alturaMundo(x, z), z], k * 3);
       uv.set([x / 8, z / 8], k * 2);
+      if (col) col.set(this.tonoSuelo(x, pos[k * 3 + 1], z), k * 3);
     }
     let o = 0;
     for (let a = 0; a < N - 1; a++) for (let b = 0; b < N - 1; b++) {
@@ -1075,7 +1178,7 @@ export class Pista {
     const lejos = indicesLejos(N, PASO_LEJOS, pos, this.juntoACalle(x0, z0)), todos = new Uint32Array(idx.length + lejos.length);
     todos.set(idx);
     todos.set(lejos, idx.length);
-    return { indice, mallas: [{ mat: mat.cerro, pos, uv, idx: todos, normal: normales(pos, idx), sombra: true, cercaHasta: idx.length }], inst: [], lineas: [], modelos: [] };
+    return { indice, mallas: [{ mat: col ? mat.sueloN2 : mat.cerro, pos, uv, idx: todos, normal: normales(pos, idx), sombra: true, cercaHasta: idx.length, col }], inst: [], lineas: [], modelos: [] };
   }
 
   // Marca los cuadros de la versión lejana de una losa que quedan cerca de la calle
