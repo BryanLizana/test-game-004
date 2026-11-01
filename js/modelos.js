@@ -1,8 +1,8 @@
-// modelos.js — Modelos 3D procedurales low-poly para "Torito sin control"
+// modelos.js — Modelos 3D procedurales low-poly para "¡Torito sin control!"
 // Unidades: metros. Y arriba. Adelante = -Z. Origen de cada modelo en el suelo, centrado.
 // Texturas opcionales en assets/tex/*.jpg: si alguna falta, el material conserva su color liso.
 import * as THREE from "three";
-import { conNieblaCielo } from "./niebla.js?v=1.6.5";
+import { conNieblaCielo } from "./niebla.js?v=1.6.6";
 
 // ---------------------------------------------------------------------------
 // Cachés de geometrías, materiales y texturas (compartidos entre instancias)
