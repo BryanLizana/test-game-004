@@ -1,4 +1,4 @@
-import * as THREE from "./three.js?v=1.5.7";
+import * as THREE from "./three.js?v=1.5.8";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -781,7 +781,8 @@ export class Pista {
           { d: dFondo, h: yTecho - this.y[i], u: i / 8, v: casa.alto / altoTex },
         ]);
         // Muros laterales: donde no hay vecina pegada, hay un hueco (mirador) o la vecina es más baja
-        const techoDe = (k) => this.y[Math.max(0, Math.min(this.n - 1, Math.round(k.s0 / PASO)))] + k.alto;
+        // Un lote con muro está hueco: su altura real es la tapa baja, no lo alto del muro
+        const techoDe = (k) => this.y[Math.max(0, Math.min(this.n - 1, Math.round(k.s0 / PASO)))] + (k.muro ? ALTO_VEREDA : k.alto);
         const cerrar = (iBorde, vecina, pegada) => {
           if (iBorde < i0 || iBorde > i1) return;
           const desde = pegada ? Math.min(yTecho, techoDe(vecina)) : this.y[iBorde] - 3;
