@@ -18,7 +18,7 @@ Te cortaron el cable del freno. Baja un cerro de Lima en mototaxi, esquiva lo qu
 
 Empiezas en la trocha de tierra del cerro alto, entre chozas y pircas, y bajas unos 1,9 km hasta las calles de la avenida. Por el camino cambian los barrios y aparecen baches, rompemuelles, obras, desmonte, tráfico, peatones, perros y gatos.
 
-Solo tienes un freno gastado que nunca detiene la moto. Si tomas una curva muy rápido, el torito se levanta en dos ruedas y se vuelca.
+El freno nunca detiene la moto y solo aguanta 5 segundos: se recarga despacio al soltarlo y, si lo vacías, queda bloqueado 5 segundos. Si tomas una curva muy rápido, el torito se levanta en dos ruedas y se vuelca.
 
 ## Modos
 
@@ -34,7 +34,7 @@ Se puede jugar de día o de noche, y en primera o tercera persona.
 | Acción | Celular | PC |
 |---|---|---|
 | Dirección | Tocar la mitad izquierda o derecha de la pantalla | ← → / A D |
-| Freno gastado | Tocar el cuarto inferior de la pantalla | S / ↓ / Espacio |
+| Freno | Tocar el cuarto inferior de la pantalla | S / ↓ / Espacio |
 | Claxon | — | H |
 | Cambiar de cámara | 🎥 | C |
 | Pausa | ❚❚ | P / Esc |
