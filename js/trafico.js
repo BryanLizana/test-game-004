@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=1.7.0";
-import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.7.0";
-import * as modelos from "./modelos.js?v=1.7.0";
-import * as modelosN2 from "./modelos-nivel2.js?v=1.7.0";
-import { reserva } from "./reciclaje.js?v=1.7.0";
+import { ANCHO, VEREDA } from "./pista.js?v=1.7.1";
+import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.7.1";
+import * as modelos from "./modelos.js?v=1.7.1";
+import * as modelosN2 from "./modelos-nivel2.js?v=1.7.1";
+import { reserva } from "./reciclaje.js?v=1.7.1";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -20,8 +20,8 @@ const ALCANCE_RIVAL = 340;
 // Nivel 2
 const COLORES_DEPORTIVO = [0xd01020, 0xf2c200, 0x20242a];
 const VEL_CRUCE = 4.5;          // m/s del auto que atraviesa la calle
-const CRUCE_ESPERA = 2.3;       // s antes de que llegue el jugador: arranca entre este valor
-const CRUCE_ESPERA_MAX = 3.15;  // y este, así al llegar el auto está en el medio o ya pasándose de carril
+const CRUCE_ESPERA = 2.6;       // s antes de que llegue el jugador: arranca entre este valor
+const CRUCE_ESPERA_MAX = 3.3;   // y este, así al llegar el auto está en el medio o ya pasándose de carril
 const SEMAFORO_AMBAR = 6.5;     // s antes de llegar
 const SEMAFORO_ROJO = 4.5;
 const FUERA_DE_CALLE = 3;       // m tras la línea de fachadas: el auto sale y entra tapado por ellas

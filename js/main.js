@@ -1,16 +1,16 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.7.0";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.7.1";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.7.0";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.7.0";
-import { nivelDe } from "./niveles.js?v=1.7.0";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.7.0";
-import { armarDecorado } from "./decorado-nivel2.js?v=1.7.0";
-import { Trafico } from "./trafico.js?v=1.7.0";
-import { Controles } from "./controles.js?v=1.7.0";
-import { Sonido } from "./audio.js?v=1.7.0";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.7.0";
-import { crearLetreros } from "./ambiente.js?v=1.7.0";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.7.1";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.7.1";
+import { nivelDe } from "./niveles.js?v=1.7.1";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.7.1";
+import { armarDecorado } from "./decorado-nivel2.js?v=1.7.1";
+import { Trafico } from "./trafico.js?v=1.7.1";
+import { Controles } from "./controles.js?v=1.7.1";
+import { Sonido } from "./audio.js?v=1.7.1";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.7.1";
+import { crearLetreros } from "./ambiente.js?v=1.7.1";
 
 const elementos = new Map();
 const $ = (id) => {
