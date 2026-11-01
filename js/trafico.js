@@ -1,8 +1,8 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=1.6.8";
-import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.6.8";
-import * as modelos from "./modelos.js?v=1.6.8";
-import { reserva } from "./reciclaje.js?v=1.6.8";
+import { ANCHO, VEREDA } from "./pista.js?v=1.6.9";
+import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.6.9";
+import * as modelos from "./modelos.js?v=1.6.9";
+import { reserva } from "./reciclaje.js?v=1.6.9";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -140,14 +140,14 @@ export class Trafico {
         });
       }
     } else {
-      for (let s = p.finTierra + 30; s < p.largo - 120; s += 70 + Math.random() * 110) {
+      for (let s = p.finTierra + 30; s < p.meta - 60; s += 70 + Math.random() * 110) {
         const m = p.muestra(s);
         if (Math.abs(m.k) > 0.02) continue;
         const lado = Math.random() < 0.5 ? -1 : 1;
         this.agregar(Math.random() < 0.8 ? "carro" : "torito", s, lado * (ANCHO / 2 - 1.0), 0, { estacionado: true, sentido: lado });
       }
       // Obras inconclusas y desmonte botado en la calle (ocupan un costado)
-      for (let s = 70; s < p.largo - 100; s += 60 + Math.random() * 90) {
+      for (let s = 70; s < p.meta - 40; s += 60 + Math.random() * 90) {
         const tipo = p.enTierra(s) || Math.random() < 0.45 ? "desmonte" : "obra";
         const lado = Math.random() < 0.5 ? -1 : 1;
         const a = this.agregar(tipo, s, 0, 0, { estatico: true, sentido: 1 });
@@ -227,7 +227,7 @@ export class Trafico {
     if (this.tSubida <= 0) {
       this.tSubida = carrera ? 3 + Math.random() * 5 : 4 + Math.random() * 7;
       const s = base() + 180 + Math.random() * 60;
-      if (s < p.largo - 80) {
+      if (s < p.meta - 20) {
         const r = Math.random();
         const tipo = p.enTierra(s) ? "torito" : r < 0.4 ? "carro" : r < 0.65 ? "torito" : r < 0.9 ? "combi" : "bus";
         this.agregar(tipo, s, -ANCHO / 4, -(5 + Math.random() * 5), { sentido: -1 });
@@ -239,7 +239,7 @@ export class Trafico {
       if (this.tLento <= 0) {
         this.tLento = 4 + Math.random() * 5;
         const s = base() + 130 + Math.random() * 40;
-        if (s < p.largo - 80) {
+        if (s < p.meta - 20) {
           const lado = Math.random() < 0.5 ? -1 : 1;
           this.agregar("persona", s, lado * (ANCHO / 2 - 1.2), -(0.9 + Math.random() * 0.6), { caminante: true, sentido: -1 });
         }
@@ -250,7 +250,7 @@ export class Trafico {
       if (this.tLento <= 0) {
         this.tLento = 14 + Math.random() * 14;
         const s = veh.s + 140;
-        if (s < p.largo - 120) {
+        if (s < p.meta - 60) {
           const r = Math.random();
           const tipo = p.enTierra(s) ? "torito" : r < 0.45 ? "torito" : r < 0.85 ? "combi" : "bus";
           this.agregar(tipo, s, ANCHO / 4, 3 + Math.random() * 3);
@@ -346,7 +346,7 @@ export class Trafico {
   }
 
   actualizarRivales(dt, veh) {
-    const meta = this.pista.largo - 60;
+    const meta = this.pista.meta;
     let choque = null;
     for (const a of this.agentes) {
       if (!a.rival) continue;

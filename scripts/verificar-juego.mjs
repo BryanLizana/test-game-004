@@ -10,7 +10,7 @@ function clase(ruta, nombre, contexto = {}) {
 }
 const Vehiculo = clase("js/vehiculo.js", "Vehiculo", { ANCHO: 7 });
 const pistaLisa = (g = 0) => ({
-  largo: 100000, baches: [], rompemuelles: [],
+  largo: 100000, meta: 99940, baches: [], rompemuelles: [],
   muestra: (_s, out) => Object.assign(out, { g, k: 0 }),
   enTierra: () => false, alturaLateral: () => 0, limiteLateral: () => 5.1,
 });
@@ -193,7 +193,7 @@ const azarFijo = Object.create(Math); azarFijo.random = () => 0.6;
 const reservaSimple = { tomar: (_clave, crear) => crear(), devolver() {} };
 const Trafico = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, ROCE_MOTOR: 0.06, aceleracionBajada, modelos: modelosSimple, reserva: reservaSimple, Math: azarFijo });
 const circuito = {
-  largo: 1000, finTierra: 200, cruces: [300, 500, 700],
+  largo: 1000, meta: 940, finTierra: 200, cruces: [300, 500, 700],
   muestra: (_s, out = {}) => Object.assign(out, { g: 0.15, k: 0.06, th: 0 }),
   enTierra: (s) => s < 200, alturaLateral: () => 0,
   aMundo: (s, d, h, out) => out.set(s, h, d),
@@ -267,10 +267,26 @@ fotoFinish2.actualizar(0.05, { ...jugadorMeta, tiempoLlegada: 0.04 });
 assert.equal(fotoFinish2.puesto({ ...jugadorMeta, tiempoLlegada: 0.04 }), 2, "un rival que cruza antes sí adelanta");
 // El jugador guarda el instante del cruce dentro del paso de física
 const cruce = new Vehiculo(pistaLisa(0.2));
-cruce.s = cruce.pista.largo - 60 - 0.05; cruce.v = 10;
+cruce.s = cruce.pista.meta - 0.05; cruce.v = 10;
 cruce.paso(1 / 120, { giro: 0, freno: false }, []);
 assert.equal(cruce.estado, "llegada");
 assert.ok(cruce.tiempoLlegada > 0 && cruce.tiempoLlegada <= cruce.tiempo, "cruce dentro del paso");
+// Tras la meta rueda solo y se para antes de que se acabe el plano, incluso a toda velocidad
+{
+  const p = new Pista(11), v = new Vehiculo(p);
+  v.s = p.meta - 0.05; v.v = 32; v.d = 4.2; v.psi = 0.3;
+  const ev = [], apretando = { giro: 1, freno: true };
+  v.paso(1 / 120, apretando, ev);
+  assert.equal(v.estado, "llegada");
+  let t = 0, antes = v.s;
+  for (; t < 40 && v.v > 0; t += 1 / 120) { v.paso(1 / 120, apretando, ev); assert.ok(v.s >= antes, "no retrocede"); antes = v.s; }
+  assert.equal(v.v, 0, "queda parado");
+  assert.ok(t > 8 && v.s < p.largo - 60, "frena despacio y le sobra pista");
+  assert.ok(Math.abs(v.d) <= 2.65 && Math.abs(v.psi) < 0.01, "vuelve a la calzada");
+  assert.equal(ev.filter((e) => e.tipo === "llegada").length, 1, "la llegada se avisa una vez");
+  assert.ok(p.finTierra >= 540, "trocha un 20 % más larga");
+  assert.ok(!p.baches.some((b) => b.s > p.finCalle) && !p.cruces.some((s) => s > p.finCalle), "el plano final queda libre");
+}
 // Un rival que choca con un auto se queda parado y pierde tiempo
 const choqueBots = new Trafico(escenaSimple, { ...circuito, cruces: [] }, "carrera");
 const [rival] = rivalesDe(choqueBots);

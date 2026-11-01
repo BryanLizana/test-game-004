@@ -1,4 +1,4 @@
-import { ANCHO } from "./pista.js?v=1.6.8";
+import { ANCHO } from "./pista.js?v=1.6.9";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
@@ -18,6 +18,9 @@ const ENFRIA_FRENO = 1.2;          // % por segundo que recupera cuando no se us
 export const FRENO_TANQUE = 5;     // s de freno disponibles
 const FRENO_RECARGA = 1 / 3.375;   // s de tanque que recupera por segundo sin frenar
 export const FRENO_ESPERA = 5;     // s bloqueado si se vacía
+const RODAR_ROCE = 0.7;            // m/s² al rodar sin motor tras la meta
+const RODAR_AIRE = 0.09;           // y lo que suma por cada m/s
+const CARRIL_FINAL = 2.6;          // m del eje: al rodar tras la meta vuelve a la calzada
 export const ROCE_MOTOR = 0.06;    // el motor engranado frena un poco (proporcional a v)
 
 // Aceleración a lo largo de la calle sin freno: pendiente, rodadura, aire y motor engranado.
@@ -98,6 +101,7 @@ export class Vehiculo {
     this.tiempo += dt;
     const frena = this.frenaEsteTurno(dt, entrada.freno);
     this.frenando = false;
+    if (this.estado === "llegada") return this.rodarHastaParar(dt);
     if (this.estado !== "ok") { this.v *= Math.max(0, 1 - dt * 2); return; }
     const p = this.pista;
     const sAntes = this.s;
@@ -206,7 +210,7 @@ export class Vehiculo {
       this.d = lado * limite;
       if (vNormal > 0.5) {
         if (vNormal > 7.5) {
-          const motivo = p.enTierra(this.s) ? "¡Te comiste la pirca!"
+          const motivo = p.enTierra(this.s) ? "¡Te saliste de la trocha!"
             : lado > 0 && p.enMirador(this.s)
               ? { concreto: "¡Te chocaste contra la baranda!", guardavia: "¡Te chocaste con el guardavía!", valla: "¡Rompiste la valla!" }[p.mirador(this.s).tipo]
               : "¡Te estrellaste contra una casa!";
@@ -225,7 +229,7 @@ export class Vehiculo {
     }
 
     if (this.dano >= 100) return this.chocar("El torito quedó hecho chatarra", eventos);
-    const meta = p.largo - 60;
+    const meta = p.meta;
     if (this.s >= meta) {
       // Instante exacto del cruce dentro del paso: decide el puesto contra los rivales
       this.tiempoLlegada = this.tiempo - dt * (this.s - meta) / Math.max(this.s - sAntes, 1e-6);
@@ -236,6 +240,29 @@ export class Vehiculo {
     // Balanceo visual: inclinación por fuerza centrífuga + rueda levantada
     const objetivoBalanceo = this.acelLat * 0.012 + this.ladoVuelco * this.inclinacion * 0.5;
     this.balanceo += (objetivoBalanceo - this.balanceo) * Math.min(1, dt * 8);
+    this.sacudida = Math.max(0, this.sacudida - dt * 2.5);
+  }
+
+  // Pasada la meta el torito sigue solo por el plano, centrándose en su carril hasta quedar parado
+  rodarHastaParar(dt) {
+    const p = this.pista, m = p.muestra(this.s, this.muestra);
+    this.v = Math.max(0, this.v - (RODAR_ROCE + RODAR_AIRE * this.v) * dt);
+    const suave = Math.min(1, dt * 1.5);
+    this.giro -= this.giro * suave;
+    this.psi -= this.psi * suave;
+    this.d += (Math.max(-CARRIL_FINAL, Math.min(CARRIL_FINAL, this.d)) - this.d) * suave;
+    this.s = Math.min(p.largo - 5, this.s + (this.v * Math.cos(this.psi)) / Math.max(0.2, 1 - this.d * m.k) * dt);
+    this.rpm = 900 + this.v * 120;
+    this.acelLat = 0;
+    this.derrapando = this.raspando = false;
+    this.inclinacion = Math.max(0, this.inclinacion - 1.4 * dt);
+    this.suelo += (p.alturaLateral(this.d, this.s) - this.suelo) * Math.min(1, dt * 6);
+    if (this.h > 0 || this.vy > 0) {
+      this.vy -= G * dt;
+      this.h += this.vy * dt;
+      if (this.h <= 0) this.h = this.vy = 0;
+    }
+    this.balanceo -= this.balanceo * Math.min(1, dt * 8);
     this.sacudida = Math.max(0, this.sacudida - dt * 2.5);
   }
 

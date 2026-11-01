@@ -1,4 +1,4 @@
-import * as THREE from "./three.js?v=1.6.8";
+import * as THREE from "./three.js?v=1.6.9";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -30,7 +30,8 @@ function tenir(buf, hex) {
 const FONDO_TECHO = 7;
 const JARDIN_ALTO = 0.6;         // jardines y parques: tierra elevada sobre la calzada, tras un murete
 const BERMA = 2;                 // franja de tierra entre la trocha y la pirca
-const LARGO_TIERRA = 450;        // primera parte: cerro alto sin pista
+const LARGO_TIERRA = 540;        // primera parte: cerro alto sin pista
+const LARGO_ESCAPE = 260;        // plano final: el torito rueda aquí hasta pararse
 const LOSA = 120;                // m de lado de cada losa del terreno
 const PASO_LOSA = 5;             // m entre vértices del terreno
 const PASO_LEJOS = 4;             // vértices que salta la versión lejana de la losa
@@ -186,7 +187,7 @@ export class Pista {
     }
     this.finTierra = total;
     add(60, 0, 0.15);
-    const LARGO = 1850;
+    const LARGO = 1940;
     while (total < LARGO - 130) {
       const t = r();
       if (t < 0.14) {                             // quiebre: la calle "se cae" de golpe
@@ -210,6 +211,9 @@ export class Pista {
     }
     add(40, 0, 0.08);
     add(90, 0, 0.02, "avenida");
+    this.finCalle = total;          // de aquí en adelante solo queda el plano sin obstáculos
+    this.meta = total - 60;
+    add(LARGO_ESCAPE, 0, 0, "avenida");
     this.segmentos = segs;
 
     const n = Math.ceil(total / PASO) + 1;
@@ -349,7 +353,7 @@ export class Pista {
 
   barrio(s) {
     if (s < this.finTierra) return "cerro";
-    const avance = (s - this.finTierra) / (this.largo - this.finTierra);
+    const avance = (s - this.finTierra) / (this.finCalle - this.finTierra);
     return avance < 0.34 ? "ladera" : avance < 0.72 ? "vecindario" : "avenida";
   }
 
@@ -393,7 +397,7 @@ export class Pista {
   // Mirador sin baranda: pasarse del borde es caer al barranco
   esBarranco(s, lado) { const m = lado > 0 && this.mirador(s); return !!m && m.tipo === "nada"; }
 
-  // Distancia lateral máxima antes de chocar: pirca en el cerro, fachadas en la ciudad
+  // Distancia lateral máxima antes de chocar: camellón de tierra en el cerro, fachadas en la ciudad
   limiteLateral(s, lado = 1) {
     if (s < this.finTierra) return ANCHO / 2 + BERMA - 0.25;
     return ANCHO / 2 + VEREDA + (this.esBarranco(s, lado) ? 0.6 : 0);
@@ -432,13 +436,13 @@ export class Pista {
     });
 
     this.baches = [];
-    for (let s = 30; s < this.largo - 70; s += 12 + r() * 30) {
+    for (let s = 30; s < this.finCalle - 70; s += 12 + r() * 30) {
       this.baches.push({ s, d: (r() - 0.5) * (ANCHO - 1.2), r: 0.3 + r() * 0.4 });
     }
 
     this.casas = [[], []]; // [izquierda, derecha]
     this.miradores = [];
-    for (let s = this.finTierra + 120 + r() * 80; s < this.largo - 250; s += 280 + r() * 220) {
+    for (let s = this.finTierra + 120 + r() * 80; s < this.finCalle - 250; s += 280 + r() * 220) {
       const tipo = ["concreto", "guardavia", "valla", "nada"][(r() * 4) | 0];
       this.miradores.push({ s0: s, s1: s + 60 + r() * 60, tipo });
     }
@@ -483,7 +487,7 @@ export class Pista {
       this.aMundo(p.s, p.lado * (ANCHO / 2 - 1.3), (p.s < this.finTierra ? 0.05 : ALTO_VEREDA) + 7.3));
 
     this.rompemuelles = [];
-    for (let s = 120; s < this.largo - 150; s += 160 + r() * 200) {
+    for (let s = 120; s < this.finCalle - 150; s += 160 + r() * 200) {
       const i = Math.round(s / PASO);
       if (Math.abs(this.k[i]) < 0.01 && this.g[i] < 0.17 && s > this.finTierra + 20) this.rompemuelles.push(s);
     }
@@ -501,9 +505,9 @@ export class Pista {
         });
         this.chozas.push(nueva());
         // Segunda y tercera fila detrás, más probables mientras bajamos
-        if (r() < avance * 0.9) { const c = nueva(); c.retiro += 7 + r() * 3; this.chozas.push(c); }
-        if (r() < (avance - 0.5) * 1.2) { const c = nueva(); c.retiro += 15 + r() * 4; this.chozas.push(c); }
-        s += 24 - avance * 16 + r() * 6;
+        if (r() < avance * 0.4) { const c = nueva(); c.retiro += 7 + r() * 3; this.chozas.push(c); }
+        if (r() < (avance - 0.6) * 0.5) { const c = nueva(); c.retiro += 15 + r() * 4; this.chozas.push(c); }
+        s += 48 - avance * 26 + r() * 10;
       }
     }
 
@@ -519,12 +523,12 @@ export class Pista {
     for (let i = 1; i < this.n; i++) {
       if (this.tipo[i] === "esquina" && this.tipo[i - 1] === "antesEsquina") this.cruces.push(i * PASO - 6);
     }
-    for (let s = 90; s < this.largo - 100; s += 90 + r() * 120) this.cruces.push(s);
+    for (let s = 90; s < this.finCalle - 100; s += 90 + r() * 120) this.cruces.push(s);
     this.cruces.sort((a, b) => a - b);
 
     // Desgaste visual separado de los obstáculos: no modifica la conducción.
     this.parches = []; this.grietas = []; this.huellas = [];
-    for (let s = this.finTierra + 8; s < this.largo - 12; s += 11 + r() * 17) {
+    for (let s = this.finTierra + 8; s < this.finCalle - 12; s += 11 + r() * 17) {
       this.parches.push({ s, d: (r() - 0.5) * 4.7, largo: 1 + r() * 2.7, ancho: 0.45 + r() * 1.2 });
       const puntos = [];
       let d = (r() - 0.5) * 5;
@@ -1062,21 +1066,19 @@ export class Pista {
   }
 
   construirCerro(salida, a, b, mat, tira, nuevo, malla) {
-    const berma = nuevo(), pirca = nuevo();
-    const dP = ANCHO / 2 + BERMA, GROSOR = 0.5, ALTO = 0.9;
+    const berma = nuevo();
+    const dP = ANCHO / 2 + BERMA, GROSOR = 0.5, ALTO_CAMELLON = 0.3, CAIDA = 1.5;
     // Terrazas de pirca de este bloque: se juntan en dos mallas (lados de piedra y tope de tierra)
     this._terrazas = { lados: nuevo(), tope: nuevo(), muros: nuevo(), techos: nuevo(), fachada: { ...nuevo(), col: [] } };
     for (const sg of [-1, 1]) {
       const ord = (p, q) => (sg < 0 ? [q, p] : [p, q]);
       tira(berma, a, b, (i) => ord({ d: sg * ANCHO / 2, h: 0, u: 0, v: i / 5 }, { d: sg * dP, h: 0.05, u: BERMA / 5, v: i / 5 }));
-      // Pirca: cara interior, tope y cara exterior
-      tira(pirca, a, b, (i) => [{ d: sg * dP, h: 0, u: i / 4, v: 0 }, { d: sg * dP, h: ALTO, u: i / 4, v: 0.45 }]);
-      tira(pirca, a, b, (i) => ord({ d: sg * dP, h: ALTO, u: i / 4, v: 0.45 }, { d: sg * (dP + GROSOR), h: ALTO, u: i / 4, v: 0.7 }));
-      tira(pirca, a, b, (i) => [{ d: sg * (dP + GROSOR), h: this.alturaTerreno(i * PASO, sg * (dP + GROSOR)) - 0.2, u: i / 4, v: 0 },
-                                 { d: sg * (dP + GROSOR), h: ALTO, u: i / 4, v: 0.45 }]);
+      // Sin muro: la orilla es un camellón bajo de tierra que muere en el terreno
+      tira(berma, a, b, (i) => ord({ d: sg * dP, h: 0.05, u: BERMA / 5, v: i / 5 }, { d: sg * (dP + GROSOR), h: ALTO_CAMELLON, u: (BERMA + GROSOR) / 5, v: i / 5 }));
+      tira(berma, a, b, (i) => ord({ d: sg * (dP + GROSOR), h: ALTO_CAMELLON, u: (BERMA + GROSOR) / 5, v: i / 5 },
+        { d: sg * (dP + GROSOR + CAIDA), h: this.alturaTerreno(i * PASO, sg * (dP + GROSOR + CAIDA)) - 0.15, u: (BERMA + GROSOR + CAIDA) / 5, v: i / 5 }));
     }
     malla(berma, mat.tierra);
-    malla(pirca, mat.pircaLisa);
     this.construirDetallesCerro(salida, a, b, mat);
 
     for (const c of this.chozas) {
@@ -1261,7 +1263,7 @@ export class Pista {
 
   construirFinal(escena) {
     // Arco de llegada en la avenida
-    const s = this.largo - 60;
+    const s = this.meta;
     const m = this.muestra(s);
     const g = new THREE.Group();
     const matPoste = new THREE.MeshStandardMaterial({ color: 0x333333 });

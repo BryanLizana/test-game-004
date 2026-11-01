@@ -1,14 +1,14 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.8";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.9";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.8";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.8";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.8";
-import { Trafico } from "./trafico.js?v=1.6.8";
-import { Controles } from "./controles.js?v=1.6.8";
-import { Sonido } from "./audio.js?v=1.6.8";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.8";
-import { crearLetreros } from "./ambiente.js?v=1.6.8";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.9";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.9";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.9";
+import { Trafico } from "./trafico.js?v=1.6.9";
+import { Controles } from "./controles.js?v=1.6.9";
+import { Sonido } from "./audio.js?v=1.6.9";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.9";
+import { crearLetreros } from "./ambiente.js?v=1.6.9";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -615,6 +615,7 @@ let modoCamara = 1; // 0 = tercera persona, 1 = primera persona
 let tiempoPartida = 0;
 let acumulador = 0;
 let tRevivir = 0, tFin = 0, mostrarFin = null;
+let rodandoFin = false;   // ganó: el torito sigue rodando detrás de los resultados
 const recursosPista = new Set(Object.values(mat).flat());
 
 function nuevaPartida() {
@@ -625,7 +626,8 @@ function nuevaPartida() {
     liberarRecursos(pista.final, recursosPista, liberados);
   }
   if (trafico) trafico.liberarTodo();
-  tRevivir = tFin = 0; mostrarFin = null;
+  tRevivir = tFin = 0; mostrarFin = null; rodandoFin = false;
+  $("fin").classList.remove("rodando");
   eventos.length = 0;
   controles.limpiar();
   tGrito = tHud = tLuces = tRuido = 0;
@@ -819,7 +821,7 @@ function actualizarHud(dt) {
   tHud = 0.1;
   const v = vehiculo;
   textoHud("hud-vel", Math.round(v.kmh));
-  textoHud("hud-dist", `${modoJuego === "carrera" ? `${trafico.puesto(v)}/4 · ` : ""}Faltan ${Math.max(0, Math.round(pista.largo - 60 - v.s))} m${modoJuego === "carrera" ? ` · ${tiempoPartida.toFixed(1)} s` : ""}`);
+  textoHud("hud-dist", `${modoJuego === "carrera" ? `${trafico.puesto(v)}/4 · ` : ""}Faltan ${Math.max(0, Math.round(pista.meta - v.s))} m${modoJuego === "carrera" ? ` · ${tiempoPartida.toFixed(1)} s` : ""}`);
   const barra = (id, pct, invertido) => {
     const b = $(id);
     const ancho = `${Math.max(0, Math.min(100, pct))}%`;
@@ -842,7 +844,8 @@ function bucle(ahora) {
   ultimo = ahora;
   if (!vehiculo || document.hidden || preparando) return;
 
-  if (estado === "jugando" || estado === "terminando") {
+  const enMarcha = estado === "jugando" || estado === "terminando" || rodandoFin;
+  if (enMarcha) {
     if (estado === "jugando" && tRevivir > 0 && (tRevivir -= dt) <= 0) revivir();
     const entrada = controles.actualizar(dt);
     acumulador += dt;
@@ -862,14 +865,15 @@ function bucle(ahora) {
     sonido.actualizar({
       rpm: vehiculo.rpm, v: vehiculo.v,
       chirrido: (vehiculo.raspando ? 0.2 : 0) + (vehiculo.derrapando ? 0.15 : 0) + (vehiculo.frenando ? 0.18 : 0) + Math.max(0, Math.abs(vehiculo.acelLat) - 4.5) * 0.05,
-      motorVivo: vehiculo.estado === "ok",
+      motorVivo: vehiculo.estado === "ok" || (vehiculo.estado === "llegada" && vehiculo.v > 0),
     });
     actualizarHud(dt);
   }
   if (estado === "terminando" && (tFin -= dt) <= 0 && mostrarFin) {
     const mostrar = mostrarFin; mostrarFin = null; mostrar();
   }
-  if (estado === "jugando" || estado === "terminando") {
+  if (rodandoFin && estado === "fin" && vehiculo.v <= 0) rodandoFin = false;
+  if (enMarcha) {
     colocarTorito(dt);
     colocarCamara(dt);
   }
@@ -1042,25 +1046,27 @@ function terminar(gano, motivo) {
   caidaFinal = !gano;   // al perder la última vida el torito siempre termina volcado
   sonido.claxon(false);
   const puestoFinal = modoJuego === "carrera" ? trafico.puesto(vehiculo) : 0;
-  const metros = Math.round(Math.min(vehiculo.s, pista.largo - 60));
+  const metros = Math.round(Math.min(vehiculo.s, pista.meta));
   let record = 0;
   try { record = +(localStorage.getItem(modoJuego === "carrera" ? "recordMetrosCarrera" : "recordMetros") || 0); } catch (_) { /* sin almacenamiento */ }
   const nuevo = metros > record;
   if (nuevo) try { localStorage.setItem(modoJuego === "carrera" ? "recordMetrosCarrera" : "recordMetros", metros); } catch (_) { /* sin almacenamiento */ }
   tRevivir = 0;
-  tFin = gano ? 0.6 : 1.8;
+  tFin = gano ? 1.4 : 1.8;
+  rodandoFin = gano;
   mostrarFin = () => {
     estado = "fin";
     $("fin-titulo").textContent = gano ? (modoJuego === "carrera" ? puestoFinal === 1 ? "¡GANASTE!" : "¡META!" : "¡LLEGASTE!") : "¡PUM!";
     $("fin-msg").textContent = modoJuego === "carrera" && gano ? `Puesto ${puestoFinal} de 4 · ${motivo}` : motivo;
     $("fin-resumen").innerHTML =
-      `Recorrido: <b>${metros} m</b> de ${Math.round(pista.largo - 60)} m<br>` +
+      `Recorrido: <b>${metros} m</b> de ${Math.round(pista.meta)} m<br>` +
       `Tiempo: <b>${tiempoPartida.toFixed(1)} s</b><br>` +
       `Vidas: <b>${"❤".repeat(Math.max(0, vidas)) || "0"}</b> · Daño: <b>${Math.min(100, Math.round(vehiculo.dano))}%</b> · Freno: <b>${Math.round(vehiculo.freno)}%</b><br>` +
       (nuevo ? "<b>¡Nuevo récord!</b>" : `Récord: ${Math.max(record, metros)} m`);
     $("hud").classList.add("oculto");
+    $("fin").classList.toggle("rodando", gano);
     $("fin").classList.add("visible");
-    sonido.actualizar({ rpm: 0, v: 0, chirrido: 0, motorVivo: false });
+    if (!gano) sonido.actualizar({ rpm: 0, v: 0, chirrido: 0, motorVivo: false });
   };
 }
 
@@ -1138,7 +1144,7 @@ $("btn-cam").addEventListener("click", alternarCamara);
 $("btn-seguir").addEventListener("click", pausar);
 $("btn-salir").addEventListener("click", () => {
   estado = "inicio";
-  tRevivir = tFin = 0; mostrarFin = null;
+  tRevivir = tFin = 0; mostrarFin = null; rodandoFin = false;
   controles.limpiar();
   sonido.silenciar(false);
   sonido.actualizar({ rpm: 0, v: 0, chirrido: 0, motorVivo: false });

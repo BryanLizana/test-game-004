@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { CHUNK } from "./pista.js?v=1.6.8";
-import { crearChoza, liberarRecursos } from "./modelos.js?v=1.6.8";
-import { reserva } from "./reciclaje.js?v=1.6.8";
+import { CHUNK } from "./pista.js?v=1.6.9";
+import { crearChoza, liberarRecursos } from "./modelos.js?v=1.6.9";
+import { reserva } from "./reciclaje.js?v=1.6.9";
 
 // Carga por tramos: solo existen los bloques cercanos al torito. Al avanzar se piden los de
 // adelante a un Web Worker (que calcula la geometría fuera del hilo principal), se montan al
@@ -26,7 +26,7 @@ let obrero = null, obreroFallo = false;
 function obtenerObrero() {
   if (obrero || obreroFallo || typeof Worker === "undefined") return obrero;
   try {
-    obrero = new Worker(new URL("./obrero-pista.js?v=1.6.8", import.meta.url), { type: "module" });
+    obrero = new Worker(new URL("./obrero-pista.js?v=1.6.9", import.meta.url), { type: "module" });
     obrero.addEventListener("error", () => { obreroFallo = true; obrero = null; });
   } catch (_) {
     obreroFallo = true;

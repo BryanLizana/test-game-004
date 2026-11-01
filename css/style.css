@@ -34,6 +34,8 @@ html, body {
   #inicio { background: #8fa3ad url("../assets/img/inicio-desktop.jpg") center 45% / cover no-repeat; }
 }
 #fin, #pausa { background: rgba(20, 10, 10, 0.7); justify-content: center; gap: 4vh; }
+/* Al ganar la calle sigue a la vista: el torito rueda detrás de los resultados */
+#fin.rodando { background: linear-gradient(rgba(20, 10, 10, 0.72), rgba(20, 10, 10, 0.3) 60%, rgba(20, 10, 10, 0.1)); justify-content: flex-start; padding-top: 6vh; }
 
 .titulo h1 {
   font-size: clamp(34px, min(12vw, 11vh), 96px);
