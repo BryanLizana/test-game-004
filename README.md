@@ -1,6 +1,6 @@
 # ¡Torito sin control!
 
-Te cortaron el cable del freno. Baja un cerro de Lima en mototaxi, esquiva lo que venga y llega entero hasta abajo. Simulador 3D para navegador, en celular o PC.
+Te cortaron el cable del freno. Baja en mototaxi desde un cerro de Lima hasta la playa, esquiva lo que venga y llega entero. Simulador 3D para navegador, en celular o PC.
 
 **[▶ Jugar ahora](https://bryanlizana.github.io/test-game-004/)** — no requiere instalación.
 
@@ -18,18 +18,32 @@ Te cortaron el cable del freno. Baja un cerro de Lima en mototaxi, esquiva lo qu
 
 Empiezas en la trocha de tierra del cerro alto y sigues en una sola partida por la avenida, la ciudad, San Isidro, Chorrillos y el malecón hasta la playa. Los primeros 90 m de tierra no tienen muros; después vuelven las pircas. Por el camino cambian los barrios y aparecen baches, rompemuelles, obras, desmonte, tráfico, peatones, perros y gatos.
 
-Al salir del cerro aparece «¡Oh no, ahora el acelerador se trabó!». El motor empuja hasta 60 km/h, recupera velocidad después de frenar y puede superar esa velocidad en las bajadas fuertes. El cerro se conecta con la ciudad mediante un paso bajo nivel, con la ciudad preparada desde el inicio y sin pantalla de carga intermedia. Conservas vidas, daño, freno y tiempo. En la ciudad circulan más carros y bicicletas; los deportivos vienen de frente por el carril contrario. La llegada se celebra en la playa, y OTRA VEZ reinicia desde el cerro.
+Un túnel conecta el cerro con la ciudad, sin pantalla de carga: conservas vidas, daño, freno y tiempo. Al entrar aparece «¡Oh no, ahora el acelerador se trabó!» y el motor empuja hasta 60 km/h, aunque las bajadas fuertes pueden superar esa velocidad.
 
-El freno nunca detiene la moto y solo aguanta 5 segundos: se recarga despacio al soltarlo y, si lo vacías, queda bloqueado 5 segundos. Si tomas una curva muy rápido, el torito se levanta en dos ruedas y se vuelca.
+La ciudad tiene curvas cerradas, cruces con semáforos donde salen autos de las calles laterales, buses azules parados en sus paraderos, bicicletas por toda la calle y deportivos que vienen de frente. La llegada se celebra en la playa: la moto sigue rodando sola sobre la arena hasta pararse, con los resultados en pantalla.
+
+El freno nunca detiene la moto y solo aguanta 5 segundos: mientras frenas se corta el acelerador, se recarga despacio al soltarlo y, si lo vacías, queda bloqueado 5 segundos. Si tomas una curva muy rápido, el torito se levanta en dos ruedas y se vuelca.
+
+### Pirañitas
+
+Por la calle flotan botellitas de gaseosa amarilla con tapa azul. Cada una da medio corazón, hasta un corazón extra. Un choque siempre quita un corazón entero.
+
+### Rutas
+
+Cada partida sale de un número de ruta. Al terminar puedes repetirla o guardarla, y en el menú puedes escribir un número o elegir una guardada para volver a jugarla. También sirve en la dirección: `?ruta=123456`. La ruta repite la calle y las pirañitas; el tráfico cambia cada vez.
+
+### Cómicos de barrio
+
+En la versión web, por las veredas bailan monigotes con disfraces caseros, como homenaje a los imitadores de la comedia peruana. Son figuras inventadas, y se apartan a tiempo: no se les puede atropellar.
 
 ## Modos
 
 | Modo | Vidas | En qué consiste |
 |---|---|---|
-| **Sin frenos** | 4 | La bajada original, con todos los obstáculos. |
-| **Carrera** | 8 | La misma bajada y la misma física contra tres toritos rivales. Hay autos que suben por el carril contrario y personas que cruzan, pero no animales ni obras. |
+| **Sin frenos** | 4 | La ruta completa, con todos los obstáculos. |
+| **Carrera** | 8 | La misma ruta y la misma física contra tres toritos rivales. Hay autos que suben por el carril contrario y personas que cruzan, pero no animales ni obras. |
 
-Se puede jugar de día o de noche, y en primera o tercera persona.
+Se puede jugar de día o de noche, y en primera o tercera persona. OTRA VEZ empieza una ruta nueva desde el cerro.
 
 ## Controles
 
@@ -73,7 +87,11 @@ node scripts/verificar-juego.mjs
 | `js/obrero-pista.js` | Web Worker que calcula los bloques |
 | `js/vehiculo.js` | Física: pendiente, freno, vuelco, saltos y choques |
 | `js/trafico.js` | Vehículos, rivales, peatones y animales |
-| `js/modelos.js` | Modelos 3D procedurales (se ven en `pruebas/modelos.html`) |
+| `js/niveles.js` | Datos de cada zona: tramos, barrios y tráfico |
+| `js/paso-urbano.js` | Túnel entre el cerro y la ciudad |
+| `js/kolas.js` | Pirañitas flotantes |
+| `js/imitadores.js` | Cómicos de barrio en las veredas |
+| `js/modelos.js`, `js/modelos-nivel2.js` | Modelos 3D procedurales (los primeros se ven en `pruebas/modelos.html`) |
 | `js/controles.js`, `js/audio.js` | Entrada y sonido |
 | `scripts/version.mjs` | Actualiza la versión en todos los archivos: `node scripts/version.mjs X.Y.Z` |
 | `scripts/logo-titulo.mjs` | Genera el logo del título en `assets/img/` |
