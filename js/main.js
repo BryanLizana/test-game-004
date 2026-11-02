@@ -1,18 +1,18 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.4";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.5";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.4";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.4";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.4";
-import { armarDecorado } from "./decorado-nivel2.js?v=1.8.4";
-import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.4";
-import { crearKolas } from "./kolas.js?v=1.8.4";
-import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.4";
-import { Trafico } from "./trafico.js?v=1.8.4";
-import { Controles } from "./controles.js?v=1.8.4";
-import { Sonido } from "./audio.js?v=1.8.4";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.4";
-import { crearLetreros } from "./ambiente.js?v=1.8.4";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.5";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.5";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.5";
+import { armarDecorado } from "./decorado-nivel2.js?v=1.8.5";
+import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.5";
+import { crearKolas } from "./kolas.js?v=1.8.5";
+import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.5";
+import { Trafico } from "./trafico.js?v=1.8.5";
+import { Controles } from "./controles.js?v=1.8.5";
+import { Sonido } from "./audio.js?v=1.8.5";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.5";
+import { crearLetreros } from "./ambiente.js?v=1.8.5";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -1073,8 +1073,8 @@ function bucle(ahora) {
 }
 
 // ---------- Vidas (corazones pixel-art) ----------
-// En Carrera hay más tráfico y gente: 8 corazones en vez de 3
-const maxVidas = () => (modoJuego === "carrera" ? 8 : 3);
+// En Carrera hay más tráfico y gente: 8 corazones en vez de 4
+const maxVidas = () => (modoJuego === "carrera" ? 8 : 4);
 let vidas = maxVidas(), tInvulnerable = 0, caidaFinal = false;
 const CORAZON = [
   ".KKK.KKK.",

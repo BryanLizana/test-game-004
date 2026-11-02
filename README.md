@@ -26,7 +26,7 @@ El freno nunca detiene la moto y solo aguanta 5 segundos: se recarga despacio al
 
 | Modo | Vidas | En qué consiste |
 |---|---|---|
-| **Sin frenos** | 3 | La bajada original, con todos los obstáculos. |
+| **Sin frenos** | 4 | La bajada original, con todos los obstáculos. |
 | **Carrera** | 8 | La misma bajada y la misma física contra tres toritos rivales. Hay autos que suben por el carril contrario y personas que cruzan, pero no animales ni obras. |
 
 Se puede jugar de día o de noche, y en primera o tercera persona.
