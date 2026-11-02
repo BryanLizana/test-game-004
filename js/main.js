@@ -1,18 +1,18 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.2";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.3";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.2";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.2";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.2";
-import { armarDecorado } from "./decorado-nivel2.js?v=1.8.2";
-import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.2";
-import { crearKolas } from "./kolas.js?v=1.8.2";
-import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.2";
-import { Trafico } from "./trafico.js?v=1.8.2";
-import { Controles } from "./controles.js?v=1.8.2";
-import { Sonido } from "./audio.js?v=1.8.2";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.2";
-import { crearLetreros } from "./ambiente.js?v=1.8.2";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.3";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.3";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.3";
+import { armarDecorado } from "./decorado-nivel2.js?v=1.8.3";
+import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.3";
+import { crearKolas } from "./kolas.js?v=1.8.3";
+import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.3";
+import { Trafico } from "./trafico.js?v=1.8.3";
+import { Controles } from "./controles.js?v=1.8.3";
+import { Sonido } from "./audio.js?v=1.8.3";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.3";
+import { crearLetreros } from "./ambiente.js?v=1.8.3";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -225,7 +225,9 @@ const mat = {
   cerro: est(0x9b8466, { side: THREE.DoubleSide }),
   // Solo nivel 2: ver SOLO_N2 y cargarTexturasN2
   fachadaN2: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
-  kola: est(0xffc400, { roughness: 0.35, metalness: 0.35, emissive: 0x4a3400 }),
+  kola: est(0xffc400, { roughness: 0.45, emissive: 0x2a1e00, side: THREE.DoubleSide }),
+  kolaVidrio: est(0xf2c200, { roughness: 0.18, metalness: 0.1, emissive: 0x4a3400, side: THREE.DoubleSide }),
+  kolaTapa: est(0x1557c8, { roughness: 0.4, emissive: 0x06183a }),
   sueloN2: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
   arenaN2: est(0xd9c29a, { side: THREE.DoubleSide }),
   vitrinas: est(0x46586a, { side: THREE.DoubleSide, roughness: 0.5 }),
@@ -568,7 +570,7 @@ function sombrasBaratas() {
 
 // ---------- Preparación antes de jugar: texturas, shaders y primer cuadro ----------
 // Materiales de la pista que se dibujan con instancias (el resto, como mallas normales).
-const INSTANCIADOS = new Set(["kola", "llantaPintada", "posteMadera", "poste", "foco", "charco", "ropa", "frazada", "cilindro",
+const INSTANCIADOS = new Set(["kola", "kolaVidrio", "kolaTapa", "llantaPintada", "posteMadera", "poste", "foco", "charco", "ropa", "frazada", "cilindro",
   "cruz", "tanque", "fierro", "follaje", "corteza", "madera", "banca", "rompemuelle"]);
 const CON_COLOR = new Set(["llantaPintada", "follaje"]);   // instancias con color propio
 const TAMBIEN_MALLA = new Set(["madera"]);
@@ -753,7 +755,7 @@ function crearMundo(nivel) {
   const paso = crearPasoUrbano(p, grupo);
   gestor.precargar(8);
   return { pista: p, tramos: gestor, trafico: new Trafico(grupo, p, modoJuego), decorado: decoracion, mundo: grupo, pasoUrbano: paso,
-    kolas: crearKolas(p, grupo, mat.kola), imitadores: crearImitadores(p, grupo) };
+    kolas: crearKolas(p, grupo, { vidrio: mat.kolaVidrio, etiqueta: mat.kola, tapa: mat.kolaTapa }), imitadores: crearImitadores(p, grupo) };
 }
 
 function liberarMundo(datos) {
@@ -1104,7 +1106,7 @@ function tomarKolas(cuantas) {
   vidas = Math.min(topeVidas(), vidas + cuantas * 0.5);
   dibujarVidas(Math.ceil(vidas) - 1);
   vibrar(40);
-  aviso("¡Kola! +½ corazón", 1.4);
+  aviso("¡Pirañita! +½ corazón", 1.4);
 }
 
 // Mensaje grande al centro para los cambios de zona

@@ -1,14 +1,20 @@
 import * as THREE from "three";
 
-// Latas flotantes de kola: cada una da medio corazón. Una sola malla instanciada por mundo.
-const RADIO = 0.24, ALTO = 0.68;
-const geoLata = new THREE.CylinderGeometry(RADIO, RADIO, ALTO, 16);
+// Pirañitas flotantes (botellita chica de tapa azul): cada una da medio corazón.
+// Una malla instanciada por pieza, por mundo. El origen de la botella queda en su centro.
+const perfil = [[0, -0.42], [0.2, -0.42], [0.24, -0.36], [0.24, 0.02], [0.21, 0.12], [0.1, 0.27], [0.085, 0.36], [0.1, 0.37], [0.1, 0.39]]
+  .map(([x, y]) => new THREE.Vector2(x, y));
+const geoBotella = new THREE.LatheGeometry(perfil, 14);
+const geoEtiqueta = new THREE.CylinderGeometry(0.247, 0.247, 0.3, 14, 1, true);
+geoEtiqueta.translate(0, -0.15, 0);
+const geoTapa = new THREE.CylinderGeometry(0.115, 0.115, 0.09, 12);
+geoTapa.translate(0, 0.43, 0);
 const ALTURA = 1.15, BALANCEO = 0.14, GIRO = 2.4;
 const ALCANCE = 150;          // m: más lejos no hace falta animarlas
 const LARGO_TOQUE = 2, ANCHO_TOQUE = 1.3, ALTO_TOQUE = 1.6;
 const SEPARACION_MIN = 170, SEPARACION_MAX = 270;
 
-export function crearKolas(pista, escena, material) {
+export function crearKolas(pista, escena, materiales) {
   const kolas = [];
   const fin = pista.meta - 30;
   // Con el azar de la pista: la misma ruta trae las latas en el mismo sitio
@@ -17,10 +23,13 @@ export function crearKolas(pista, escena, material) {
     if (pista.enPasoUrbano(s)) continue;
     kolas.push({ s, d: (azar() < 0.5 ? -1 : 1) * pista.carril, fase: azar() * 6.28, tomada: false });
   }
-  const malla = new THREE.InstancedMesh(geoLata, material, Math.max(1, kolas.length));
-  malla.frustumCulled = false;      // las instancias se mueven: el volumen de la malla no sirve
-  malla.count = kolas.length;
-  escena.add(malla);
+  const mallas = [[geoBotella, materiales.vidrio], [geoEtiqueta, materiales.etiqueta], [geoTapa, materiales.tapa]].map(([geo, material]) => {
+    const malla = new THREE.InstancedMesh(geo, material, Math.max(1, kolas.length));
+    malla.frustumCulled = false;    // las instancias se mueven: el volumen de la malla no sirve
+    malla.count = kolas.length;
+    escena.add(malla);
+    return malla;
+  });
 
   const matriz = new THREE.Matrix4(), pos = new THREE.Vector3(), giro = new THREE.Quaternion();
   const euler = new THREE.Euler(), uno = new THREE.Vector3(1, 1, 1), nada = new THREE.Vector3(0, 0, 0);
@@ -28,13 +37,14 @@ export function crearKolas(pista, escena, material) {
   const colocar = (k, i) => {
     pista.aMundo(k.s, k.d, ALTURA + Math.sin(tiempo * 2 + k.fase) * BALANCEO, pos);
     giro.setFromEuler(euler.set(0.2, tiempo * GIRO + k.fase, 0));
-    malla.setMatrixAt(i, matriz.compose(pos, giro, k.tomada ? nada : uno));
+    matriz.compose(pos, giro, k.tomada ? nada : uno);
+    for (const malla of mallas) malla.setMatrixAt(i, matriz);
   };
   kolas.forEach(colocar);
-  malla.instanceMatrix.needsUpdate = true;
+  for (const malla of mallas) malla.instanceMatrix.needsUpdate = true;
 
   return {
-    malla,
+    mallas,
     kolas,
     // Mueve las cercanas y devuelve cuántas tomó el torito en este cuadro
     actualizar(dt, veh) {
@@ -49,12 +59,11 @@ export function crearKolas(pista, escena, material) {
         colocar(k, i);
         cambio = true;
       });
-      if (cambio) malla.instanceMatrix.needsUpdate = true;
+      if (cambio) for (const malla of mallas) malla.instanceMatrix.needsUpdate = true;
       return tomadas;
     },
     liberar() {
-      escena.remove(malla);
-      malla.dispose();
+      for (const malla of mallas) { escena.remove(malla); malla.dispose(); }
     },
   };
 }

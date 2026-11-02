@@ -2,7 +2,7 @@
 // sombrillas y botes). Cada pieza de cada modelo es un solo InstancedMesh para todo el nivel, así que
 // suma pocas llamadas de dibujo aunque haya decenas de árboles.
 import * as THREE from "three";
-import { crearFicus, crearPalmera, crearSombrilla, crearBote } from "./modelos-nivel2.js?v=1.8.2";
+import { crearFicus, crearPalmera, crearSombrilla, crearBote } from "./modelos-nivel2.js?v=1.8.3";
 
 const TAM_MAR = 3200;
 const COLORES_SOMBRILLA = [0xe53935, 0x1e88e5, 0xfdd835, 0x43a047];
