@@ -1,18 +1,18 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.5";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.6";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.5";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.5";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.5";
-import { armarDecorado } from "./decorado-nivel2.js?v=1.8.5";
-import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.5";
-import { crearKolas } from "./kolas.js?v=1.8.5";
-import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.5";
-import { Trafico } from "./trafico.js?v=1.8.5";
-import { Controles } from "./controles.js?v=1.8.5";
-import { Sonido } from "./audio.js?v=1.8.5";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.5";
-import { crearLetreros } from "./ambiente.js?v=1.8.5";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.6";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.6";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.6";
+import { armarDecorado } from "./decorado-nivel2.js?v=1.8.6";
+import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.6";
+import { crearKolas } from "./kolas.js?v=1.8.6";
+import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.6";
+import { Trafico } from "./trafico.js?v=1.8.6";
+import { Controles } from "./controles.js?v=1.8.6";
+import { Sonido } from "./audio.js?v=1.8.6";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.6";
+import { crearLetreros } from "./ambiente.js?v=1.8.6";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -226,7 +226,8 @@ const mat = {
   // Solo nivel 2: ver SOLO_N2 y cargarTexturasN2
   fachadaN2: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
   kola: est(0xffc400, { roughness: 0.45, emissive: 0x2a1e00, side: THREE.DoubleSide }),
-  kolaVidrio: est(0xf2c200, { roughness: 0.18, metalness: 0.1, emissive: 0x4a3400, side: THREE.DoubleSide }),
+  kolaLiquido: est(0xffb800, { roughness: 0.3, emissive: 0x8a5a00 }),
+  kolaVidrio: est(0xa9d8c6, { roughness: 0.1, metalness: 0.1, emissive: 0x1c382e, transparent: true, opacity: 0.42, depthWrite: false, side: THREE.DoubleSide }),
   kolaTapa: est(0x1557c8, { roughness: 0.4, emissive: 0x06183a }),
   sueloN2: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
   arenaN2: est(0xd9c29a, { side: THREE.DoubleSide }),
@@ -571,7 +572,7 @@ function sombrasBaratas() {
 
 // ---------- Preparación antes de jugar: texturas, shaders y primer cuadro ----------
 // Materiales de la pista que se dibujan con instancias (el resto, como mallas normales).
-const INSTANCIADOS = new Set(["kola", "kolaVidrio", "kolaTapa", "llantaPintada", "posteMadera", "poste", "foco", "charco", "ropa", "frazada", "cilindro",
+const INSTANCIADOS = new Set(["kola", "kolaLiquido", "kolaVidrio", "kolaTapa", "llantaPintada", "posteMadera", "poste", "foco", "charco", "ropa", "frazada", "cilindro",
   "cruz", "tanque", "fierro", "follaje", "corteza", "madera", "banca", "rompemuelle"]);
 const CON_COLOR = new Set(["llantaPintada", "follaje"]);   // instancias con color propio
 const TAMBIEN_MALLA = new Set(["madera"]);
@@ -756,7 +757,7 @@ function crearMundo(nivel) {
   const paso = crearPasoUrbano(p, grupo);
   gestor.precargar(8);
   return { pista: p, tramos: gestor, trafico: new Trafico(grupo, p, modoJuego), decorado: decoracion, mundo: grupo, pasoUrbano: paso,
-    kolas: crearKolas(p, grupo, { vidrio: mat.kolaVidrio, etiqueta: mat.kola, tapa: mat.kolaTapa }), imitadores: crearImitadores(p, grupo) };
+    kolas: crearKolas(p, grupo, { liquido: mat.kolaLiquido, vidrio: mat.kolaVidrio, etiqueta: mat.kola, tapa: mat.kolaTapa }), imitadores: crearImitadores(p, grupo) };
 }
 
 function liberarMundo(datos) {

@@ -4,8 +4,8 @@
 // Texturas opcionales en assets/tex/n2/: si alguna falta, el material conserva su color liso.
 // modelos.js no exporta sus utilidades, así que aquí va la copia mínima de las que hacen falta.
 import * as THREE from "three";
-import { conNieblaCielo } from "./niebla.js?v=1.8.5";
-import { crearCarro, crearPersona } from "./modelos.js?v=1.8.5";
+import { conNieblaCielo } from "./niebla.js?v=1.8.6";
+import { crearCarro, crearPersona } from "./modelos.js?v=1.8.6";
 
 // ---------------------------------------------------------------------------
 // Cachés. liberarRecursos() de modelos.js no conoce estas cachés: lo compartido anula su dispose()

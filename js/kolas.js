@@ -2,13 +2,15 @@ import * as THREE from "three";
 
 // Pirañitas flotantes (botellita chica de tapa azul): cada una da medio corazón.
 // Una malla instanciada por pieza, por mundo. El origen de la botella queda en su centro.
-const perfil = [[0, -0.42], [0.2, -0.42], [0.24, -0.36], [0.24, 0.02], [0.21, 0.12], [0.1, 0.27], [0.085, 0.36], [0.1, 0.37], [0.1, 0.39]]
-  .map(([x, y]) => new THREE.Vector2(x, y));
-const geoBotella = new THREE.LatheGeometry(perfil, 14);
-const geoEtiqueta = new THREE.CylinderGeometry(0.247, 0.247, 0.3, 14, 1, true);
+const curva = (puntos) => puntos.map(([x, y]) => new THREE.Vector2(x, y));
+// Vidrio transparente por fuera; dentro la gaseosa llega al hombro y deja aire en el cuello
+const geoBotella = new THREE.LatheGeometry(curva([[0, -0.42], [0.2, -0.42], [0.25, -0.36], [0.255, 0.02], [0.22, 0.13], [0.105, 0.27],
+  [0.09, 0.35], [0.105, 0.365], [0.105, 0.39]]), 14);
+const geoLiquido = new THREE.LatheGeometry(curva([[0, -0.395], [0.19, -0.395], [0.232, -0.345], [0.237, 0.02], [0.205, 0.12], [0.17, 0.165], [0, 0.165]]), 14);
+const geoEtiqueta = new THREE.CylinderGeometry(0.26, 0.26, 0.26, 14, 1, true);
 geoEtiqueta.translate(0, -0.15, 0);
-const geoTapa = new THREE.CylinderGeometry(0.115, 0.115, 0.09, 12);
-geoTapa.translate(0, 0.43, 0);
+const geoTapa = new THREE.CylinderGeometry(0.118, 0.118, 0.08, 12);
+geoTapa.translate(0, 0.42, 0);
 const ALTURA = 1.15, BALANCEO = 0.14, GIRO = 2.4;
 const ALCANCE = 150;          // m: más lejos no hace falta animarlas
 const LARGO_TOQUE = 2, ANCHO_TOQUE = 1.3, ALTO_TOQUE = 1.6;
@@ -23,7 +25,7 @@ export function crearKolas(pista, escena, materiales) {
     if (pista.enPasoUrbano(s)) continue;
     kolas.push({ s, d: (azar() < 0.5 ? -1 : 1) * pista.carril, fase: azar() * 6.28, tomada: false });
   }
-  const mallas = [[geoBotella, materiales.vidrio], [geoEtiqueta, materiales.etiqueta], [geoTapa, materiales.tapa]].map(([geo, material]) => {
+  const mallas = [[geoLiquido, materiales.liquido], [geoEtiqueta, materiales.etiqueta], [geoTapa, materiales.tapa], [geoBotella, materiales.vidrio]].map(([geo, material]) => {
     const malla = new THREE.InstancedMesh(geo, material, Math.max(1, kolas.length));
     malla.frustumCulled = false;    // las instancias se mueven: el volumen de la malla no sirve
     malla.count = kolas.length;
