@@ -1,5 +1,5 @@
-import * as THREE from "./three.js?v=1.8.7";
-import { nivelDe } from "./niveles.js?v=1.8.7";
+import * as THREE from "./three.js?v=1.8.8";
+import { nivelDe } from "./niveles.js?v=1.8.8";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).

@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=1.8.7";
-import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.8.7";
-import * as modelos from "./modelos.js?v=1.8.7";
-import * as modelosN2 from "./modelos-nivel2.js?v=1.8.7";
-import { reserva } from "./reciclaje.js?v=1.8.7";
+import { ANCHO, VEREDA } from "./pista.js?v=1.8.8";
+import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.8.8";
+import * as modelos from "./modelos.js?v=1.8.8";
+import * as modelosN2 from "./modelos-nivel2.js?v=1.8.8";
+import { reserva } from "./reciclaje.js?v=1.8.8";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -176,6 +176,7 @@ export class Trafico {
     const a = { tipo, s, d, v, vd: 0, modelo, ...medidas, chocado: false, ...extra };
     this.agentes.push(a);
     this.colocar(a);
+    modelo.visible = false;   // se muestra al quedar a la vista, en la siguiente actualización
     return a;
   }
 

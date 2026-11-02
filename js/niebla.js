@@ -28,7 +28,7 @@ THREE.ShaderChunk.fog_pars_fragment += `
 THREE.ShaderChunk.fog_fragment = THREE.ShaderChunk.fog_fragment.replace(
   "gl_FragColor.rgb = mix( gl_FragColor.rgb, fogColor, fogFactor );", `
   vec3 colorNiebla = fogColor;
-  if (cieloListo > 0.5) {
+  if (cieloListo > 0.5 && fogFactor > 0.0) {   // casi toda la pantalla no tiene niebla: se ahorra el cálculo
     vec3 dir = normalize(vDirCielo);
     float u = fract(atan(dir.z, -dir.x) / 6.2831853);
     float v = pow(clamp(1.0 - acos(clamp(dir.y, -1.0, 1.0)) / 3.14159265, 0.0, 1.0), 1.5);

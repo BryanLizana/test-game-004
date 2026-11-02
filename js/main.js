@@ -1,18 +1,18 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.7";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.8";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.7";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.7";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.7";
-import { armarDecorado } from "./decorado-nivel2.js?v=1.8.7";
-import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.7";
-import { crearKolas } from "./kolas.js?v=1.8.7";
-import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.7";
-import { Trafico } from "./trafico.js?v=1.8.7";
-import { Controles } from "./controles.js?v=1.8.7";
-import { Sonido } from "./audio.js?v=1.8.7";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.7";
-import { crearLetreros } from "./ambiente.js?v=1.8.7";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.8";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.8";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.8";
+import { armarDecorado } from "./decorado-nivel2.js?v=1.8.8";
+import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.8";
+import { crearKolas } from "./kolas.js?v=1.8.8";
+import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.8";
+import { Trafico } from "./trafico.js?v=1.8.8";
+import { Controles } from "./controles.js?v=1.8.8";
+import { Sonido } from "./audio.js?v=1.8.8";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.8";
+import { crearLetreros } from "./ambiente.js?v=1.8.8";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -77,16 +77,24 @@ THREE.DefaultLoadingManager.onLoad = () => {
   });
 };
 const cargador = new THREE.TextureLoader();
-function textura(material, ruta, repetir = true, respaldo = null) {
-  cargador.load(ruta, (t) => {
+const fotosPedidas = new Map();   // una sola textura por archivo, aunque la usen varios materiales
+function fotoDe(ruta, repetir) {
+  const clave = `${ruta}|${repetir}`;
+  if (!fotosPedidas.has(clave)) fotosPedidas.set(clave, new Promise((listo, fallo) => cargador.load(ruta, (t) => {
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
     if (repetir) t.wrapS = t.wrapT = THREE.RepeatWrapping;
     else { t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; }
+    listo(t);
+  }, undefined, fallo)));
+  return fotosPedidas.get(clave);
+}
+function textura(material, ruta, repetir = true, respaldo = null) {
+  fotoDe(ruta, repetir).then((t) => {
     material.map = t;
     material.color.set(material.userData.tinte ?? 0xffffff);
     material.needsUpdate = true;
-  }, undefined, () => { if (respaldo) textura(material, respaldo, repetir); });
+  }, () => { if (respaldo) textura(material, respaldo, repetir); });
 }
 const est = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.92, ...extra });
 
@@ -471,8 +479,9 @@ function alternarVibracion() {
   colocarCamara(0, true);
 }
 
+const LUZ_POSTE = 40;
 const lucesPoste = Array.from({ length: 4 }, () => {
-  const l = new THREE.PointLight(0xffa94d, 40, 22, 1.6);
+  const l = new THREE.PointLight(0xffa94d, LUZ_POSTE, 22, 1.6);
   escena.add(l);
   return l;
 });
@@ -542,7 +551,7 @@ function actualizarLucesPoste(dt) {
     }
   }
   lucesPoste.forEach((l, i) => {
-    l.visible = !!postesCerca[i];
+    l.intensity = postesCerca[i] ? LUZ_POSTE : 0;
     if (postesCerca[i]) l.position.copy(postesCerca[i]);
   });
 }
@@ -718,6 +727,7 @@ const controles = new Controles();
 const sonido = new Sonido();
 let pista, tramos, vehiculo, trafico, decorado = null, mundo = null, pasoUrbano = null, kolas = null, imitadores = null;
 precargarImitadores();
+const PREPARA_CIUDAD = 420;   // m antes del enlace en que empieza a armarse la ciudad
 let ciudadPreparada = null;
 const mundosPorLiberar = [];
 let estado = "inicio";
@@ -823,7 +833,7 @@ function nuevaPartida() {
   colocarTorito(0);
   colocarCamara(0, true);
   tAvisoProtegido = 0;
-  aviso(pista.nivel.avisoInicio ?? (modoJuego === "carrera" ? "¡Carrera sin frenos contra 3 rivales!" : "¡Se cortó el cable del freno!"), pista.nivel.id === 2 ? 6 : 2.5);
+  cartelGrande(pista.nivel.avisoInicio ?? "¡Oh no, estoy sin frenos! ¡Ayuda, causaaa!", 4);
   if (pista.nivel.id === 2) tAvisoProtegido = 6;
 }
 
@@ -1037,6 +1047,7 @@ function bucle(ahora) {
     imitadores.actualizar(dt, vehiculo);
     procesarEventos();
     tramos.actualizar(vehiculo.s);
+    if (ciudadPreparada && vehiculo.s > pista.meta - PREPARA_CIUDAD) ciudadPreparada.tramos.actualizar(8);
     sonido.actualizar({
       rpm: vehiculo.rpm, v: vehiculo.v,
       chirrido: (vehiculo.raspando ? 0.2 : 0) + (vehiculo.derrapando ? 0.15 : 0) + (vehiculo.frenando ? 0.18 : 0) + Math.max(0, Math.abs(vehiculo.acelLat) - 4.5) * 0.05,
