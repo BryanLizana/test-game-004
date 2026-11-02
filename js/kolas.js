@@ -3,10 +3,9 @@ import * as THREE from "three";
 // Pirañitas flotantes (botellita chica de tapa azul): cada una da medio corazón.
 // Una malla instanciada por pieza, por mundo. El origen de la botella queda en su centro.
 const curva = (puntos) => puntos.map(([x, y]) => new THREE.Vector2(x, y));
-// Vidrio transparente por fuera; dentro la gaseosa llega al hombro y deja aire en el cuello
-const geoBotella = new THREE.LatheGeometry(curva([[0, -0.42], [0.2, -0.42], [0.25, -0.36], [0.255, 0.02], [0.22, 0.13], [0.105, 0.27],
-  [0.09, 0.35], [0.105, 0.365], [0.105, 0.39]]), 14);
-const geoLiquido = new THREE.LatheGeometry(curva([[0, -0.395], [0.19, -0.395], [0.232, -0.345], [0.237, 0.02], [0.205, 0.12], [0.17, 0.165], [0, 0.165]]), 14);
+// La gaseosa llega hasta la pared de la botella; el vidrio solo se ve arriba, con aire en el cuello
+const geoLiquido = new THREE.LatheGeometry(curva([[0, -0.42], [0.2, -0.42], [0.25, -0.36], [0.255, 0.02], [0.22, 0.13], [0.195, 0.16], [0, 0.16]]), 14);
+const geoBotella = new THREE.LatheGeometry(curva([[0.197, 0.155], [0.105, 0.27], [0.09, 0.35], [0.105, 0.365], [0.105, 0.39]]), 14);
 const geoEtiqueta = new THREE.CylinderGeometry(0.26, 0.26, 0.26, 14, 1, true);
 geoEtiqueta.translate(0, -0.15, 0);
 const geoTapa = new THREE.CylinderGeometry(0.118, 0.118, 0.08, 12);
