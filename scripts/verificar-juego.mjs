@@ -10,7 +10,7 @@ function clase(ruta, nombre, contexto = {}) {
 }
 const Vehiculo = clase("js/vehiculo.js", "Vehiculo", { ANCHO: 7 });
 const pistaLisa = (g = 0) => ({
-  largo: 100000, baches: [], rompemuelles: [],
+  largo: 100000, meta: 99940, baches: [], rompemuelles: [],
   muestra: (_s, out) => Object.assign(out, { g, k: 0 }),
   enTierra: () => false, alturaLateral: () => 0, limiteLateral: () => 5.1,
 });
@@ -42,8 +42,42 @@ for (let i = 0; i < 600 && vuelcoOriginal.estado === "ok"; i++) {
 assert.equal(vuelcoOriginal.estado, "choque");
 assert.match(vuelcoOriginal.motivo, /volcaste/, "Sin frenos conserva el vuelco original");
 
-class Vector3 { set(x, y, z) { Object.assign(this, { x, y, z }); return this; } }
-const Pista = clase("js/pista.js", "Pista", { THREE: { Vector3 } });
+class Vector3 { set(x, y, z) { Object.assign(this, { x, y, z }); return this; } lerpVectors(a, b, t) { return this.set(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t); } }
+const nivelDe = clase("js/niveles.js", "nivelDe");
+// El acelerador del segundo tramo recupera 60 km/h, incluso después de frenar.
+{
+  const p = { ...pistaLisa(0.03), nivel: nivelDe(2) };
+  const v = new Vehiculo(p);
+  v.frenoPulso = true;
+  avanzar(v, 12, entrada());
+  assert.ok(v.kmh > 59.9 && v.kmh < 60.1, `acelerador trabado: ${v.kmh} km/h`);
+  avanzar(v, 2, entrada(true));
+  assert.ok(v.kmh < 59, "el freno todavía reduce la velocidad");
+  avanzar(v, 5, entrada());
+  assert.ok(v.kmh > 59.9, "al soltar el freno vuelve a acelerar a 60");
+  console.log("OK: acelerador trabado a 60 km/h; freno y recuperación de velocidad.");
+}
+const Pista = clase("js/pista.js", "Pista", { THREE: { Vector3 }, nivelDe });
+{
+  const p = new Pista(42);
+  assert.equal(p.tienePirca(0), false);
+  assert.equal(p.tienePirca(89.99), false);
+  assert.equal(p.tienePirca(90), true);
+  assert.equal(p.tienePirca(p.finTierra - 1), true);
+  assert.equal(p.tienePirca(p.finTierra), false);
+  // Aislar la geometría de la berma: ninguna pirca lateral antes de los 90 m.
+  p.construirDetallesCerro = () => {};
+  p.chozas = [];
+  const materiales = new Proxy({}, { get: (_, clave) => ["letreros", "geoPrendas", "geoFrazadas"].includes(clave) ? ["a", "b", "c", "d", "e", "f", "g", "h"] : clave });
+  const geometria = (s0, s1) => {
+    const salida = { mallas: [], inst: [], lineas: [], modelos: [] };
+    p.construirBloque(salida, s0, s1, materiales);
+    return salida.mallas.filter((m) => m.mat === "pircaLisa");
+  };
+  assert.equal(geometria(0, 80).length, 0);
+  assert.ok(geometria(100, 140).length > 0);
+  console.log("OK: primeros 90 m sin pirca y muros restaurados en el resto de la trocha.");
+}
 // La versión lejana de cada losa no abre rendijas: sus aristas interiores se comparten
 // y su borde es idéntico al de la versión cercana, que es lo que ve la losa vecina.
 function aristasLibres(idx, ini, fin) {
@@ -117,7 +151,7 @@ for (const semilla of [1, 42, 12345, 87654]) {
   const codigo = leer("js/pista.js");
   const seccion = codigo.slice(codigo.indexOf("    const vereda = nuevo();"), codigo.indexOf("    // Miradores: baranda"));
   const construir = vm.runInNewContext(`(function(i0, i1) {
-    const iT = Math.round(this.finTierra), v = new Vector3();
+    const iT = Math.round(this.finTierra), iA = Infinity, v = new Vector3();
     ${seccion}
   })`, {
     Vector3, ANCHO: 7, VEREDA: 1.6, mat: { vereda: 1, tierra: 2, asfalto: 3 },
@@ -191,9 +225,10 @@ const modelosSimple = Object.fromEntries(["crearCarro", "crearTorito", "crearPer
 modelosSimple.animarCaminar = modelosSimple.liberarRecursos = () => {};
 const azarFijo = Object.create(Math); azarFijo.random = () => 0.6;
 const reservaSimple = { tomar: (_clave, crear) => crear(), devolver() {} };
-const Trafico = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, ROCE_MOTOR: 0.06, aceleracionBajada, modelos: modelosSimple, reserva: reservaSimple, Math: azarFijo });
+const modelosN2Simple = { ...Object.fromEntries(["crearBusAzul", "crearDeportivo", "crearParadero", "crearSemaforo", "crearCiclista"].map((k) => [k, modeloSimple])), ponerSemaforo: (m, estado) => { m.userData.estado = estado; } };
+const Trafico = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, ROCE_MOTOR: 0.06, aceleracionBajada, modelos: modelosSimple, modelosN2: modelosN2Simple, reserva: reservaSimple, Math: azarFijo });
 const circuito = {
-  largo: 1000, finTierra: 200, cruces: [300, 500, 700],
+  largo: 1000, meta: 940, finTierra: 200, cruces: [300, 500, 700],
   muestra: (_s, out = {}) => Object.assign(out, { g: 0.15, k: 0.06, th: 0 }),
   enTierra: (s) => s < 200, alturaLateral: () => 0,
   aMundo: (s, d, h, out) => out.set(s, h, d),
@@ -267,10 +302,88 @@ fotoFinish2.actualizar(0.05, { ...jugadorMeta, tiempoLlegada: 0.04 });
 assert.equal(fotoFinish2.puesto({ ...jugadorMeta, tiempoLlegada: 0.04 }), 2, "un rival que cruza antes sí adelanta");
 // El jugador guarda el instante del cruce dentro del paso de física
 const cruce = new Vehiculo(pistaLisa(0.2));
-cruce.s = cruce.pista.largo - 60 - 0.05; cruce.v = 10;
+cruce.s = cruce.pista.meta - 0.05; cruce.v = 10;
 cruce.paso(1 / 120, { giro: 0, freno: false }, []);
 assert.equal(cruce.estado, "llegada");
 assert.ok(cruce.tiempoLlegada > 0 && cruce.tiempoLlegada <= cruce.tiempo, "cruce dentro del paso");
+// Tras la meta rueda solo y se para antes de que se acabe el plano, incluso a toda velocidad
+{
+  const p = new Pista(11), v = new Vehiculo(p);
+  v.s = p.meta - 0.05; v.v = 32; v.d = 2.1; v.psi = 0.1;
+  const ev = [], apretando = { giro: 1, freno: true };
+  v.paso(1 / 120, apretando, ev);
+  assert.equal(v.estado, "llegada");
+  let t = 0, antes = v.s;
+  for (; t < 40 && v.v > 0; t += 1 / 120) { v.paso(1 / 120, apretando, ev); assert.ok(v.s >= antes, "no retrocede"); antes = v.s; }
+  assert.equal(v.v, 0, "queda parado");
+  assert.ok(t > 8 && v.s < p.largo - 60, "frena despacio y le sobra pista");
+  assert.ok(Math.abs(v.d) <= 2.65 && Math.abs(v.psi) < 0.01, "vuelve a la calzada");
+  assert.equal(ev.filter((e) => e.tipo === "llegada").length, 1, "la llegada se avisa una vez");
+  assert.ok(p.finTierra >= 540, "trocha un 20 % más larga");
+  assert.ok(!p.baches.some((b) => b.s > p.finCalle) && !p.cruces.some((s) => s > p.finCalle), "el plano final queda libre");
+}
+// Nivel 2: ciudad, San Isidro, Chorrillos, bajada, malecón y playa
+for (const semilla of [3, 42, 777, 2026]) {
+  const p = new Pista(semilla, 2);
+  assert.equal(p.ancho, 10.5);
+  assert.equal(p.finTierra, 0);
+  assert.ok(!p.enTierra(10) && p.chozas.length === 0 && p.llantas.length === 0, "sin nada del cerro");
+  assert.ok(Math.abs(p.meta - 2650) < 15 && Math.abs(p.largo - 2800) < 15, "ruta de 2.800 m");
+  assert.deepEqual([...new Set(p.barrios)], ["ciudad", "sanIsidro", "chorrillos", "bajada", "malecon", "playa"]);
+  assert.ok(p.casas.flat().every((c) => c.barrio !== "playa"), "la playa no tiene casas");
+  for (const lista of [p.x, p.y, p.z, p.th, p.g, p.gFis, p.k]) assert.ok(lista.every(Number.isFinite), "geometría sin NaN");
+  for (let s = 5; s < p.largo - 5; s += 41) for (const d of [-7, 0, 7]) assert.ok(p.alturaTerreno(s, d) < 0, "el terreno no tapa la calle");
+  const espejo = new Proxy({}, { get: (_, clave) => (clave === "letreros" || clave === "geoPrendas" || clave === "geoFrazadas" ? ["a", "b", "c", "d", "e", "f", "g", "h"] : clave) });
+  for (let k = 0; k < p.numBloques; k++) for (const m of p.datosBloque(k, espejo).mallas) assert.ok(m.pos.every(Number.isFinite), "bloque sin NaN");
+  for (let k = p.numBloques; k < p.numPiezas; k += 9) assert.ok(p.datosBloque(k, espejo).mallas[0].pos.every(Number.isFinite), "losa sin NaN");
+  for (let s = 0; s < p.largo; s += 1) {
+    const m = p.muestra(s);
+    if (Math.abs(m.k) > 0.0005 && p.barrio(s) !== "bajada") assert.ok(1 / Math.abs(m.k) >= 40, "curva abierta en s=" + s);
+  }
+  // Sin tocar nada, siguiendo la calle en línea recta: no se para y las curvas no vuelcan a nadie
+  const v = new Vehiculo(p), dt = 1 / 120;
+  let t = 0, peor = 0, lento = 99;
+  while (v.s < p.meta && t < 400) {
+    const m = p.muestra(v.s);
+    v.v = Math.max(0, v.v + aceleracionBajada(v.v, m.gFis) * dt);
+    v.s += v.v * dt;
+    t += dt;
+    peor = Math.max(peor, v.v * v.v * Math.abs(m.k));
+    if (v.s > 200) lento = Math.min(lento, v.v);
+  }
+  assert.ok(v.s >= p.meta && v.v * 3.6 > 30, "llega a la meta rápido: " + (v.v * 3.6).toFixed(1) + " km/h");
+  assert.ok(lento * 3.6 > 30, "nunca se queda sin empuje");
+  assert.ok(peor < 7.5, "curva imposible: " + peor.toFixed(2) + " m/s²");
+  // Tras la meta la arena lo para antes del final
+  const real = new Vehiculo(p);
+  real.s = p.meta - 0.05; real.v = 21;
+  const ev = [], nada = { giro: 0, freno: false };
+  real.paso(dt, nada, ev);
+  for (let i = 0; i < 6000 && real.v > 0; i++) real.paso(dt, nada, ev);
+  assert.equal(real.v, 0);
+  assert.ok(real.s < p.meta + 70, "la arena frena fuerte");
+}
+// Tráfico del nivel 2: sin toritos, animales ni obras, en la calle ancha
+{
+  const p = new Pista(5, 2);
+  const t = new Trafico(escenaSimple, p, "sinFrenos");
+  assert.ok(t.agentes.length > 5);
+  assert.ok(t.agentes.every((a) => ["carro", "persona", "busAzul", "paradero", "semaforo"].includes(a.tipo)), "tráfico sembrado del nivel 2");
+  assert.ok(t.agentes.filter((a) => a.estacionado).every((a) => Math.abs(a.d) > 3.5), "estacionados al borde de la calle ancha");
+  assert.ok(t.agentes.filter((a) => a.tipo === "carro" && a.v !== 0).length >= 4, "la ciudad ya tiene circulación al entrar");
+  assert.ok(t.agentes.filter((a) => a.ciclista && p.barrio(a.s) === "ciudad").length >= 2, "bicicletas también en ciudad");
+  const veh = { s: 300, d: 2.6, v: 15, h: 0, estado: "ok", invulnerable: true };
+  for (let i = 0; i < 2400; i++) t.actualizar(1 / 60, veh);
+  assert.ok(t.agentes.every((a) => !["torito", "perro", "gato", "obra", "desmonte"].includes(a.tipo)), "nada del barrio sube");
+}
+// El nivel 1 no cambia con la tabla de niveles
+{
+  const p = new Pista(42);
+  assert.equal(p.ancho, 7);
+  assert.equal(p.gFis, p.g);
+  assert.equal(p.barrios, null);
+  assert.equal(new Vehiculo(p).d, 1.75);
+}
 // Un rival que choca con un auto se queda parado y pierde tiempo
 const choqueBots = new Trafico(escenaSimple, { ...circuito, cruces: [] }, "carrera");
 const [rival] = rivalesDe(choqueBots);
@@ -285,5 +398,143 @@ assert.ok(rival.s - sRetraso < 1, "durante el retraso el rival no avanza");
 const traficoOriginal = new Trafico(escenaSimple, circuito);
 assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "persona"));
 assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "desmonte"));
+// Nivel 2: paraderos, cruces, deportivos y ciclistas
+{
+  const TraficoAzar = clase("js/trafico.js", "Trafico", { ANCHO: 7, VEREDA: 1.6, LARGO_TORITO: 2.65, ANCHO_TORITO: 1.3, ROCE_MOTOR: 0.06, aceleracionBajada, modelos: modelosSimple, modelosN2: modelosN2Simple, reserva: reservaSimple, Math });
+  const pruebaTipos = (semilla) => {
+    const p = new Pista(semilla, 2), t = new TraficoAzar(escenaSimple, p, "sinFrenos");
+    const finSan = p.tramosPuestos.find((x) => x.barrio === "sanIsidro").s1;
+    assert.ok(t.paraderos.length >= 3 && t.paraderos.every((s) => s < finSan), "paraderos solo en ciudad y San Isidro");
+    assert.ok(t.agentes.some((a) => a.cruzando), "hay autos que cruzan");
+    assert.ok(t.agentes.filter((a) => a.tipo === "semaforo").length === t.agentes.filter((a) => a.cruzando).length * 2, "cada cruce tiene sus dos semáforos");
+    assert.ok(p.bocacalles.length >= 4, "al menos 4 bocacalles");
+    assert.ok(p.bocacalles.every((b, i) => i === 0 || b.s - p.bocacalles[i - 1].s >= 180), "separadas 180 m o más");
+    for (const b of p.bocacalles) {
+      assert.ok(!p.casas.flat().some((c) => c.s0 < b.s + 7 && c.s1 > b.s - 7), "ningún lote pisa la bocacalle");
+      assert.ok(!p.postes.some((x) => Math.abs(x.s - b.s) < 8) && !t.paraderos.some((x) => Math.abs(x - b.s) < 25), "esquina despejada");
+      assert.ok(p.alturaLateral(4, b.s) < 0.03 && p.alturaLateral(-4, b.s) < 0.03, "vereda rebajada");
+      const auto = t.agentes.find((a) => a.cruzando && a.s === b.s);
+      assert.ok(Math.abs(auto.d) === 12, "el auto espera en la transversal");
+    }
+    assert.deepEqual(new Pista(semilla, 2).bocacalles, p.bocacalles, "la misma semilla abre las mismas calles");
+    const bloque = p.datosBloque(Math.floor(p.bocacalles[0].s / 60), new Proxy({}, { get: (_, clave) => clave === "letreros" ? [] : clave }));
+    assert.ok(bloque.mallas.every((m) => m.pos.every(Number.isFinite)), "malla de la bocacalle válida");
+    const veh = { s: 0, d: 2.6, v: 14, h: 0, estado: "ok", invulnerable: false };
+    const vistos = new Set();
+    let chocesDeportivo = 0, avisos = 0, busTrasBajada = 0;
+    for (let i = 0; i < 60 * 190 && veh.s < p.meta - 5; i++) {
+      veh.s += veh.v / 60;
+      const c = t.actualizar(1 / 60, veh);
+      if (c?.agente.deportivo) chocesDeportivo++;
+      if (c) c.agente.chocado = true;
+      for (const a of t.agentes) {
+        vistos.add(a.tipo);
+        if (a.ciclista) vistos.add("ciclista");
+        if (a.deportivo) vistos.add("deportivista");
+        if (a.deportivo && !a.chocado) {
+          assert.ok(a.v <= 0 && a.sentido === -1 && a.d < 0, "el deportivo viene por el carril contrario");
+          assert.ok(!a.decorado, "el deportivo participa en las colisiones");
+        }
+        if ((a.tipo === "busAzul" || a.tipo === "bus") && a.s > finSan + 260) busTrasBajada++;
+      }
+      avisos += t.noticias.length; t.noticias.length = 0;
+    }
+    assert.equal(chocesDeportivo, 0, "el deportivo no choca al jugador");
+    assert.equal(busTrasBajada, 0, "no hay buses desde la bajada");
+    assert.ok(vistos.has("deportivista") && vistos.has("ciclista") && vistos.has("busAzul"), "salen deportivos, ciclistas y buses azules");
+    assert.ok(avisos > 2, "cruces y deportivos avisan");
+    assert.ok(!["torito", "perro", "gato", "obra", "desmonte", "bus"].some((x) => vistos.has(x)), "nada ajeno al nivel 2");
+  };
+  [1, 7, 21].forEach(pruebaTipos);
+  {
+    const p = new Pista(8, 2), t = new TraficoAzar(escenaSimple, p, "sinFrenos");
+    t.liberarTodo();
+    const veh = { s: 200, d: -p.carril, v: 16, h: 0, estado: "ok", invulnerable: false };
+    t.actualizarNivel2(1 / 60, veh);
+    const deportivo = t.agentes.find((a) => a.deportivo);
+    assert.ok(deportivo && deportivo.s > veh.s && deportivo.v < 0, "aparece delante y viene hacia el jugador");
+    deportivo.s = veh.s + 0.2;
+    const choque = t.actualizar(1 / 60, veh);
+    assert.equal(choque?.agente, deportivo, "invadir su carril puede causar un choque frontal");
+  }
+  // Un bus en paradero tapa el carril derecho y deja libre el izquierdo
+  {
+    const p = new Pista(3, 2), t = new TraficoAzar(escenaSimple, p, "sinFrenos");
+    const veh = { s: 20, d: 2.6, v: 14, h: 0, estado: "ok", invulnerable: true };
+    const bus = t.agregar("busAzul", 400, 3.7, 0, { enParada: true });
+    t.actualizar(1 / 60, veh);
+    assert.equal(bus.v, 0, "espera en el paradero");
+    veh.s = 406; t.actualizar(1 / 60, veh);
+    assert.ok(bus.v > 0, "sale cuando el jugador pasó");
+    const movil = t.agregar("busAzul", t.paraderos[0] - 8, 2.6, 5);
+    movil.ultimaParada = null;
+    veh.s = t.paraderos[0] - 30;
+    for (let i = 0; i < 40; i++) t.actualizar(1 / 60, veh);
+    assert.ok(movil.v === 0 && movil.tParado > 0, "el bus que baja se detiene en el paradero");
+    for (let i = 0; i < 300; i++) t.actualizar(1 / 60, veh);
+    assert.ok(movil.v === 5, "y retoma");
+  }
+  // Carrera en el nivel 2: los rivales llegan a la meta entre paraderos y cruces, sin colgarse
+  {
+    const p = new Pista(4, 2), t = new TraficoAzar(escenaSimple, p, "carrera");
+    const veh = { s: 0, d: 2.6, v: 14, h: 0, estado: "ok", invulnerable: true };
+    let i = 0;
+    for (; i < 60 * 400 && !t.agentes.filter((a) => a.rival).every((a) => a.termino); i++) { veh.s = Math.min(veh.s + veh.v / 60, p.meta - 1); t.actualizar(1 / 60, veh); }
+    assert.ok(t.agentes.filter((a) => a.rival).every((a) => a.termino), "los rivales terminan el nivel 2");
+    console.log(`OK: rivales del nivel 2 terminan en ${Math.round(i / 60)} s.`);
+  }
+  // Salida justa: desde cualquier punto de la calle, un jugador que pasa por detrás del auto no choca
+  const simular = (esquiva) => {
+  let simuladas = 0, golpes = 0;
+  for (const semilla of [2, 9, 15]) for (const d0 of [-2.6, 0, 2.6]) {
+    const p = new Pista(semilla, 2);
+    const t = new TraficoAzar(escenaSimple, p, "sinFrenos");
+    t.tSubida = t.tLento = 1e9; t.sigDeportivo = 1e9;
+    const cruces = t.agentes.filter((a) => a.cruzando);
+    t.agentes = cruces.concat(t.agentes.filter((a) => a.tipo === "semaforo"));
+    for (const a of cruces) {
+      const v = new Vehiculo(p);
+      v.s = a.s - 110; v.d = d0; v.v = 14; v.psi = 0;
+      for (let i = 0; i < 60 * 12 && v.s < a.s + 10; i++) {
+        const activo = !a.esperando && !a.retirar;
+        const objetivo = esquiva && activo ? a.lado * 3.8 : d0;      // detrás del auto: por el lado de donde sale
+        const psi = Math.max(-0.3, Math.min(0.3, (objetivo - v.d) * 0.3));
+        const giro = Math.max(-1, Math.min(1, (psi - v.psi) * 5));
+        v.paso(1 / 60, { giro, freno: false }, []);
+        if (v.estado !== "ok") break;
+        const c = t.actualizar(1 / 60, v);
+        if (c?.agente === a) { golpes++; break; }
+      }
+      simuladas++;
+      t.agentes = t.agentes.filter((o) => o !== a);
+      assert.ok(v.v * 3.6 > 30, "sigue a velocidad de juego");
+    }
+  }
+  return { simuladas, golpes };
+  };
+  const { simuladas, golpes } = simular(true), quieto = simular(false);
+  assert.ok(quieto.golpes > 0, "sin esquivar, el cruce sí es un peligro");
+  assert.ok(simuladas >= 9 && golpes === 0, `esquivando por detrás no se choca: ${golpes} de ${simuladas}`);
+  console.log(`OK: cruces del nivel 2 esquivados en ${simuladas - golpes} de ${simuladas} simulaciones; sin esquivar choca en ${quieto.golpes} de ${quieto.simuladas}.`);
+}
 console.log("OK: tres bots completan la carrera sin frenos; suben autos y personas; los rivales se retrasan al chocar; sin desmontes en Carrera; liberación global y centrado del timón.");
+// Precargar la ciudad no debe reemplazar el trazado del cerro dentro del worker.
+{
+  const recibidos = [], self = { postMessage: (datos) => recibidos.push(datos) };
+  class PistaWorker {
+    constructor(semilla, nivel) { this.semilla = semilla; this.nivel = nivel; }
+    datosBloque(indice) { return { indice, semilla: this.semilla, nivel: this.nivel, mallas: [], inst: [], lineas: [] }; }
+  }
+  vm.runInNewContext(leer("js/obrero-pista.js").replace(/^import .*;\r?\n/gm, ""), { self, Pista: PistaWorker });
+  const enviar = (data) => self.onmessage({ data });
+  enviar({ tipo: "pista", partida: 1, semilla: 101, nivel: 1 });
+  enviar({ tipo: "pista", partida: 2, semilla: 202, nivel: 2 });
+  enviar({ tipo: "bloque", partida: 1, indice: 3 });
+  enviar({ tipo: "bloque", partida: 2, indice: 4 });
+  assert.deepEqual(recibidos.map((x) => [x.partida, x.datos.semilla]), [[1, 101], [2, 202]]);
+  enviar({ tipo: "cerrar", partida: 1 });
+  enviar({ tipo: "bloque", partida: 1, indice: 5 });
+  assert.equal(recibidos.length, 2, "al liberar un mundo se deja de generar su geometría");
+  console.log("OK: worker mantiene el cerro y la ciudad precargada separados.");
+}
 console.log(`OK: Carrera con la física de Sin frenos, freno gastado, modo original, multitouch y ${muestras} muestras de veredas; geometrías de 4 pistas sin valores inválidos.`);

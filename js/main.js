@@ -1,14 +1,18 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.6.8";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.8";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.6.8";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.6.8";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.6.8";
-import { Trafico } from "./trafico.js?v=1.6.8";
-import { Controles } from "./controles.js?v=1.6.8";
-import { Sonido } from "./audio.js?v=1.6.8";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.6.8";
-import { crearLetreros } from "./ambiente.js?v=1.6.8";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.8";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.8";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.8";
+import { armarDecorado } from "./decorado-nivel2.js?v=1.8.8";
+import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.8";
+import { crearKolas } from "./kolas.js?v=1.8.8";
+import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.8";
+import { Trafico } from "./trafico.js?v=1.8.8";
+import { Controles } from "./controles.js?v=1.8.8";
+import { Sonido } from "./audio.js?v=1.8.8";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.8";
+import { crearLetreros } from "./ambiente.js?v=1.8.8";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -58,17 +62,39 @@ sol.shadow.bias = -0.0005;
 escena.add(sol, sol.target);
 
 // ---------- Texturas (con color de respaldo mientras cargan o si faltan) ----------
+// Un único seguimiento de carga: ningún consumidor sustituye callbacks de otro.
+let texturasCargando = false;
+const esperasTexturas = new Set();
+THREE.DefaultLoadingManager.onStart = () => { texturasCargando = true; };
+THREE.DefaultLoadingManager.onProgress = (_url, cargadas, total) => {
+  for (const espera of esperasTexturas) espera.avance(cargadas / total);
+};
+THREE.DefaultLoadingManager.onLoad = () => {
+  texturasCargando = false;
+  // Los atlas se arman con Promise.all: dejar que se apliquen antes de compilar.
+  queueMicrotask(() => {
+    if (!texturasCargando) for (const espera of [...esperasTexturas]) espera.fin();
+  });
+};
 const cargador = new THREE.TextureLoader();
-function textura(material, ruta, repetir = true, respaldo = null) {
-  cargador.load(ruta, (t) => {
+const fotosPedidas = new Map();   // una sola textura por archivo, aunque la usen varios materiales
+function fotoDe(ruta, repetir) {
+  const clave = `${ruta}|${repetir}`;
+  if (!fotosPedidas.has(clave)) fotosPedidas.set(clave, new Promise((listo, fallo) => cargador.load(ruta, (t) => {
     t.colorSpace = THREE.SRGBColorSpace;
     t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
     if (repetir) t.wrapS = t.wrapT = THREE.RepeatWrapping;
     else { t.wrapS = THREE.RepeatWrapping; t.wrapT = THREE.ClampToEdgeWrapping; }
+    listo(t);
+  }, undefined, fallo)));
+  return fotosPedidas.get(clave);
+}
+function textura(material, ruta, repetir = true, respaldo = null) {
+  fotoDe(ruta, repetir).then((t) => {
     material.map = t;
     material.color.set(material.userData.tinte ?? 0xffffff);
     material.needsUpdate = true;
-  }, undefined, () => { if (respaldo) textura(material, respaldo, repetir); });
+  }, () => { if (respaldo) textura(material, respaldo, repetir); });
 }
 const est = (color, extra = {}) => new THREE.MeshStandardMaterial({ color, roughness: 0.92, ...extra });
 
@@ -205,6 +231,17 @@ const mat = {
   pirca: est(0x8d8172, { side: THREE.DoubleSide }),
   pircaLisa: est(0x8d8172, { side: THREE.DoubleSide }),
   cerro: est(0x9b8466, { side: THREE.DoubleSide }),
+  // Solo nivel 2: ver SOLO_N2 y cargarTexturasN2
+  fachadaN2: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
+  kola: est(0xffc400, { roughness: 0.45, emissive: 0x2a1e00, side: THREE.DoubleSide }),
+  kolaLiquido: new THREE.MeshBasicMaterial({ color: 0xffc000, toneMapped: false }),   // amarillo puro, sin que lo apague la luz
+  kolaVidrio: est(0xa9d8c6, { roughness: 0.1, metalness: 0.1, emissive: 0x24463a, transparent: true, opacity: 0.5, depthWrite: false, side: THREE.DoubleSide }),
+  kolaTapa: est(0x1557c8, { roughness: 0.4, emissive: 0x06183a }),
+  sueloN2: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
+  arenaN2: est(0xd9c29a, { side: THREE.DoubleSide }),
+  vitrinas: est(0x46586a, { side: THREE.DoubleSide, roughness: 0.5 }),
+  letrerosN2: est(0xd8b52e, { side: THREE.DoubleSide }),
+  barandaMalecon: est(0x9aa0a4, { side: THREE.DoubleSide, alphaTest: 0.5 }),
   baranda: est(0xd8d1c2, { side: THREE.DoubleSide }),
   cruz: est(0xf4f4f4),
   llantaPintada: est(0xffffff, { roughness: 0.8 }),
@@ -295,6 +332,82 @@ Promise.all([1, 2, 3, 4].map((k) => new Promise((ok, mal) => {
 ensuciar(mat.muroLateral);
 mat.charco.visible = false;
 
+// ---------- Texturas del nivel 2: se piden solo al jugarlo ----------
+// Atlas 4x4 de fachadas: aquí la foto también se repite a lo alto (torres de muchos pisos)
+ensuciar(mat.fachadaN2, `#ifdef USE_MAP
+  float celdaAtlas = floor(vMapUv.x / ${CELDA_ATLAS.toFixed(1)} + 0.001);
+  vec2 local = vec2(vMapUv.x - celdaAtlas * ${CELDA_ATLAS.toFixed(1)}, vMapUv.y);
+  vec2 origen = vec2(mod(celdaAtlas, 4.0) * 0.25, 0.75 - floor(celdaAtlas / 4.0) * 0.25);
+  vec2 uvAtlas = origen + (0.004 + fract(local) * 0.992) * 0.25;
+  vec4 sampledDiffuseColor = textureGrad(map, uvAtlas, dFdx(local) * 0.25, dFdy(local) * 0.25);
+  diffuseColor *= sampledDiffuseColor;
+#endif`, "fachadaAtlas4");
+const FOTOS_N2 = ["fachada-ciudad-1", "fachada-ciudad-2", "fachada-ciudad-3", "fachada-ciudad-4",
+  "fachada-sanisidro-1", "fachada-sanisidro-2", "fachada-sanisidro-3", "fachada-sanisidro-4",
+  "casona-1", "casona-2", "casona-3", "casona-1"];
+const CAMBIOS_N2 = [
+  { material: mat.asfalto, ruta: "asfalto-liso.jpg" }, { material: mat.vereda, ruta: "vereda-losa.jpg" },
+  { ruta: "cielo-costa.jpg", cielo: true },
+];
+let n2Pedido = false;
+function cargarTexturasN2() {
+  if (n2Pedido) return;
+  n2Pedido = true;
+  const n2 = "assets/tex/n2/";
+  mat.arenaN2.userData.tinte = 0xf6e2bb;
+  textura(mat.arenaN2, "assets/tex/arena.jpg");
+  textura(mat.sueloN2, "assets/tex/arena.jpg");
+  textura(mat.vitrinas, n2 + "vitrinas.jpg", false);
+  textura(mat.letrerosN2, n2 + "letreros.jpg", false);
+  textura(mat.barandaMalecon, n2 + "baranda-malecon.png");
+  const lector = new THREE.ImageLoader();
+  // Si falta una foto, su celda usa una fachada del nivel 1
+  const foto = (ruta, k) => new Promise((ok) => lector.load(n2 + ruta + ".jpg", ok, undefined,
+    () => lector.load(`assets/tex/fachada${(k % 4) + 1}.jpg`, ok, undefined, () => ok(null))));
+  Promise.all(FOTOS_N2.map(foto)).then((fotos) => {
+    const lado = 512, c = document.createElement("canvas");
+    c.width = c.height = lado * 4;
+    const g = c.getContext("2d");
+    fotos.forEach((img, k) => { if (img) g.drawImage(img, (k % 4) * lado, Math.floor(k / 4) * lado, lado, lado); });
+    const t = new THREE.CanvasTexture(c);
+    t.colorSpace = THREE.SRGBColorSpace;
+    t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+    mat.fachadaN2.map = t;
+    mat.fachadaN2.needsUpdate = true;
+  });
+  for (const cambio of CAMBIOS_N2) {
+    cargador.load(n2 + cambio.ruta, (t) => {
+      t.colorSpace = THREE.SRGBColorSpace;
+      t.anisotropy = Math.min(8, renderer.capabilities.getMaxAnisotropy());
+      t.wrapS = THREE.RepeatWrapping;
+      t.wrapT = cambio.cielo ? THREE.ClampToEdgeWrapping : THREE.RepeatWrapping;
+      cambio.mapa = t;
+      vestirNivel();
+    }, undefined, () => {});
+  }
+}
+// Pone o quita lo que el nivel 2 cambia sobre materiales compartidos con el nivel 1
+function vestirNivel() {
+  const n2 = !!pista && pista.nivel.id === 2;
+  if (n2) cargarTexturasN2();
+  for (const c of CAMBIOS_N2) {
+    const m = c.cielo ? cieloMat : c.material;
+    if (n2 && c.mapa && m.map !== c.mapa) { c.base = m.map; c.colorBase = m.color.clone(); m.map = c.mapa; m.needsUpdate = true; }
+    // El color del cielo depende de la hora elegida: el guardado puede ser de la otra hora
+    if (!n2 && "base" in c && m.map === c.mapa) { m.map = c.base; if (c.cielo) m.color.set(m.map ? m.userData.tinte : escena.background); else m.color.copy(c.colorBase); m.needsUpdate = true; }
+    if (c.cielo) {
+      uniformesCielo.cieloNiebla.value = m.map;
+      uniformesCielo.cieloListo.value = m.map ? 1 : 0;
+      uniformesCielo.cieloTinte.value = m.color;
+    }
+  }
+  const muro = mat.muroLateral.map;
+  if (muro) {
+    const envolver = n2 ? THREE.RepeatWrapping : THREE.ClampToEdgeWrapping;
+    if (muro.wrapT !== envolver) { muro.wrapT = envolver; muro.needsUpdate = true; }
+  }
+}
+
 // Entorno 360° para reflejos reales en cromo, vidrio y vinilo
 cargador.load("assets/tex/entorno.jpg", (t) => {
   t.mapping = THREE.EquirectangularReflectionMapping;
@@ -366,8 +479,9 @@ function alternarVibracion() {
   colocarCamara(0, true);
 }
 
+const LUZ_POSTE = 40;
 const lucesPoste = Array.from({ length: 4 }, () => {
-  const l = new THREE.PointLight(0xffa94d, 40, 22, 1.6);
+  const l = new THREE.PointLight(0xffa94d, LUZ_POSTE, 22, 1.6);
   escena.add(l);
   return l;
 });
@@ -437,7 +551,7 @@ function actualizarLucesPoste(dt) {
     }
   }
   lucesPoste.forEach((l, i) => {
-    l.visible = !!postesCerca[i];
+    l.intensity = postesCerca[i] ? LUZ_POSTE : 0;
     if (postesCerca[i]) l.position.copy(postesCerca[i]);
   });
 }
@@ -467,19 +581,20 @@ function sombrasBaratas() {
 
 // ---------- Preparación antes de jugar: texturas, shaders y primer cuadro ----------
 // Materiales de la pista que se dibujan con instancias (el resto, como mallas normales).
-const INSTANCIADOS = new Set(["llantaPintada", "posteMadera", "poste", "foco", "charco", "ropa", "frazada", "cilindro",
+const INSTANCIADOS = new Set(["kola", "kolaLiquido", "kolaVidrio", "kolaTapa", "llantaPintada", "posteMadera", "poste", "foco", "charco", "ropa", "frazada", "cilindro",
   "cruz", "tanque", "fierro", "follaje", "corteza", "madera", "banca", "rompemuelle"]);
 const CON_COLOR = new Set(["llantaPintada", "follaje"]);   // instancias con color propio
 const TAMBIEN_MALLA = new Set(["madera"]);
 const SIN_USO = new Set(["prendas"]);
 
+textura(mat.kola, "assets/tex/n2/lata-kola.jpg");
+
 function esperarTexturas(alAvance) {
+  if (!texturasCargando) return Promise.resolve();
   return new Promise((listo) => {
-    const gestor = THREE.DefaultLoadingManager;
-    const fin = () => { clearTimeout(limite); gestor.onLoad = gestor.onProgress = () => {}; listo(); };
-    const limite = setTimeout(fin, 30000);   // una textura colgada no debe impedir jugar
-    gestor.onProgress = (_url, cargadas, total) => alAvance(cargadas / total);
-    gestor.onLoad = fin;
+    const espera = { avance: alAvance, fin: () => { clearTimeout(limite); esperasTexturas.delete(espera); listo(); } };
+    const limite = setTimeout(espera.fin, 30000);
+    esperasTexturas.add(espera);
   });
 }
 
@@ -512,7 +627,7 @@ function variantesDeShader() {
   };
   escena.traverse(copiar);
   for (const parte of partesDeChozas()) agregar(() => instancia(parte.geometria, parte.material, false), parte.material, true, false);
-  const catalogo = trafico.tomarCatalogo();
+  const catalogo = trafico.tomarCatalogo(true);
   for (const modelo of catalogo) modelo.traverse(copiar);
   return { variantes: [...variantes.values()], catalogo };
 }
@@ -566,6 +681,7 @@ async function subirTexturas() {
   const revisar = (m) => { if (m && m.isMaterial) for (const v of Object.values(m)) if (v && v.isTexture && v.image) texturas.add(v); };
   for (const valor of Object.values(mat)) for (const m of [].concat(valor)) revisar(m);
   escena.traverse((o) => { for (const m of [].concat(o.material || [])) revisar(m); });
+  for (const cambio of CAMBIOS_N2) if (cambio.mapa) texturas.add(cambio.mapa);
   for (const t of texturas) { renderer.initTexture(t); await pausaCorta(); }
 }
 
@@ -584,6 +700,7 @@ async function prepararRender(desde = 0) {
   preparando = true;
   const boton = $("btn-jugar");
   boton.disabled = true;
+  $("btn-hora").disabled = true;
   mostrarCarga(desde);
   $("carga").hidden = false;
   try {
@@ -602,45 +719,108 @@ async function prepararRender(desde = 0) {
   $("carga").hidden = true;
   boton.textContent = "JUGAR";
   boton.disabled = false;
+  $("btn-hora").disabled = false;
 }
 
 // ---------- Estado de juego ----------
 const controles = new Controles();
 const sonido = new Sonido();
-let pista, tramos, vehiculo, trafico;
+let pista, tramos, vehiculo, trafico, decorado = null, mundo = null, pasoUrbano = null, kolas = null, imitadores = null;
+precargarImitadores();
+const PREPARA_CIUDAD = 420;   // m antes del enlace en que empieza a armarse la ciudad
+let ciudadPreparada = null;
+const mundosPorLiberar = [];
 let estado = "inicio";
 let modoJuego = "sinFrenos";
 try { if (localStorage.getItem("modoJuego") === "carrera") modoJuego = "carrera"; } catch (_) {}
+// Una sola partida: cerro → ciudad → playa. Reiniciar siempre vuelve al cerro.
+let nivelJuego = 1;
+let metrosCompletados = 0;
 let modoCamara = 1; // 0 = tercera persona, 1 = primera persona
 let tiempoPartida = 0;
 let acumulador = 0;
 let tRevivir = 0, tFin = 0, mostrarFin = null;
+let rodandoFin = false;   // ganó: el torito sigue rodando detrás de los resultados
 const recursosPista = new Set(Object.values(mat).flat());
 
-function nuevaPartida() {
-  const liberados = new Set();
-  if (tramos) tramos.cerrar();
-  if (pista && pista.final) {
-    escena.remove(pista.final);
-    liberarRecursos(pista.final, recursosPista, liberados);
+// Ruta: número que define la calle completa. Vacío = al azar. Se puede repetir o guardar.
+const RUTA_MAX = 999999;
+const leerRuta = (texto) => { const n = Math.floor(+texto); return n >= 1 && n <= RUTA_MAX ? n : null; };
+let rutaPedida = leerRuta(new URLSearchParams(location.search).get("ruta"));
+let rutaActual = rutaPedida ?? 1, repetirRuta = false;
+function rutasGuardadas() {
+  try { return JSON.parse(localStorage.getItem("rutasGuardadas")) || []; } catch (_) { return []; }
+}
+function mostrarRutasGuardadas() {
+  $("rutas-guardadas").innerHTML = rutasGuardadas().map((r) => `<option value="${r}"></option>`).join("");
+}
+
+function crearMundo(nivel) {
+  const grupo = new THREE.Group();
+  grupo.name = `mundo-${nivel}`;
+  escena.add(grupo);
+  const semilla = nivel === 1 ? rutaActual : (rutaActual * 2654435761) % 2147483647;   // la ruta define los dos mundos
+  const p = new Pista(semilla, nivel);
+  const gestor = new GestorTramos(p, grupo, mat, semilla);
+  if (nivel === 2) p.construirFinal(grupo);
+  const decoracion = p.nivel.costa ? armarDecorado(p, grupo, cargador) : null;
+  const paso = crearPasoUrbano(p, grupo);
+  gestor.precargar(8);
+  return { pista: p, tramos: gestor, trafico: new Trafico(grupo, p, modoJuego), decorado: decoracion, mundo: grupo, pasoUrbano: paso,
+    kolas: crearKolas(p, grupo, { liquido: mat.kolaLiquido, vidrio: mat.kolaVidrio, etiqueta: mat.kola, tapa: mat.kolaTapa }), imitadores: crearImitadores(p, grupo) };
+}
+
+function liberarMundo(datos) {
+  if (!datos?.mundo) return;
+  datos.tramos.cerrar();
+  datos.trafico.liberarTodo();
+  datos.decorado?.liberar();
+  datos.pasoUrbano.liberar();
+  datos.kolas.liberar();
+  datos.imitadores.liberar();
+  if (datos.pista.final) liberarRecursos(datos.pista.final, recursosPista);
+  escena.remove(datos.mundo);
+}
+
+function usarMundo(datos) {
+  ({ pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas, imitadores } = datos);
+  mundo.visible = true;
+}
+
+function liberarMundosPendientes() {
+  const inicio = performance.now();
+  while (mundosPorLiberar.length && performance.now() - inicio < 2) {
+    const datos = mundosPorLiberar[0];
+    const bloque = datos.tramos.bloques.keys().next();
+    if (!bloque.done) datos.tramos.liberar(bloque.value);
+    else { liberarMundo(datos); mundosPorLiberar.shift(); }
   }
-  if (trafico) trafico.liberarTodo();
-  tRevivir = tFin = 0; mostrarFin = null;
+}
+
+function nuevaPartida() {
+  nivelJuego = 1; metrosCompletados = 0;
+  if (!repetirRuta) rutaActual = rutaPedida ?? 1 + Math.floor(Math.random() * RUTA_MAX);
+  repetirRuta = false;
+  $("ruta-pausa").textContent = `Ruta ${rutaActual}`;
+  liberarMundo({ pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas, imitadores });
+  liberarMundo(ciudadPreparada);
+  tRevivir = tFin = 0; mostrarFin = null; rodandoFin = false;
+  $("fin").classList.remove("rodando");
+  tCartel = 0;
+  $("cartel").classList.remove("visible");
   eventos.length = 0;
   controles.limpiar();
   tGrito = tHud = tLuces = tRuido = 0;
   cuadros = tCalidad = 0;
   $("grito").classList.remove("visible");
   if (partes.adorno) { partes.adorno.userData.ang = partes.adorno.userData.vel = 0; partes.adorno.rotation.z = 0; }
-  // La semilla se comparte con el worker que calcula los bloques: ambos arman la misma calle
-  const semilla = (Math.random() * 1e9) | 0;
-  pista = new Pista(semilla);
-  tramos = new GestorTramos(pista, escena, mat, semilla);
-  pista.construirFinal(escena);
+  usarMundo(crearMundo(1));
+  // Preparar la salida mientras está el menú: al llegar al enlace solo se cambia de mundo.
+  ciudadPreparada = crearMundo(2);
+  ciudadPreparada.mundo.visible = false;
+  vestirNivel();
   vehiculo = new Vehiculo(pista);
   vehiculo.frenoPulso = true;
-  tramos.precargar(vehiculo.s);
-  trafico = new Trafico(escena, pista, modoJuego);
   tiempoPartida = 0;
   acumulador = 0;
   vidas = maxVidas();
@@ -652,7 +832,9 @@ function nuevaPartida() {
   controles.centrarDireccion();
   colocarTorito(0);
   colocarCamara(0, true);
-  aviso(modoJuego === "carrera" ? "¡Carrera sin frenos contra 3 rivales!" : "¡Se cortó el cable del freno!", 2.5);
+  tAvisoProtegido = 0;
+  cartelGrande(pista.nivel.avisoInicio ?? "¡Oh no, estoy sin frenos! ¡Ayuda, causaaa!", 4);
+  if (pista.nivel.id === 2) tAvisoProtegido = 6;
 }
 
 // ---------- Gritos del chofer (solo globo de texto) ----------
@@ -666,7 +848,9 @@ function gritar(texto) {
 
 // ---------- Avisos ----------
 let tAviso = 0;
+let tAvisoProtegido = 0;
 function aviso(texto, seg = 2) {
+  if (tAvisoProtegido > 0) return;
   $("aviso").textContent = texto;
   $("aviso").classList.add("visible");
   tAviso = seg;
@@ -812,6 +996,7 @@ function actualizarHud(dt) {
   frenoAnterior = vehiculo.freno;
   $("b-freno-vida").parentElement.classList.toggle("gastando", gastando);
   cuentaFreno(vehiculo, dt);
+  if (tCartel > 0 && (tCartel -= dt) <= 0) $("cartel").classList.remove("visible");
   if (tAviso > 0 && (tAviso -= dt) <= 0) $("aviso").classList.remove("visible");
   if (tGrito > 0 && (tGrito -= dt) <= 0) $("grito").classList.remove("visible");
   $("alerta").classList.toggle("visible", vehiculo.inclinacion > 0.15 && vehiculo.estado === "ok");
@@ -819,7 +1004,7 @@ function actualizarHud(dt) {
   tHud = 0.1;
   const v = vehiculo;
   textoHud("hud-vel", Math.round(v.kmh));
-  textoHud("hud-dist", `${modoJuego === "carrera" ? `${trafico.puesto(v)}/4 · ` : ""}Faltan ${Math.max(0, Math.round(pista.largo - 60 - v.s))} m${modoJuego === "carrera" ? ` · ${tiempoPartida.toFixed(1)} s` : ""}`);
+  textoHud("hud-dist", `${modoJuego === "carrera" ? `${trafico.puesto(v)}/4 · ` : ""}${nivelJuego === 1 ? "Cerro" : "Playa"} · Faltan ${Math.max(0, Math.round(pista.meta - v.s))} m${modoJuego === "carrera" ? ` · ${tiempoPartida.toFixed(1)} s` : ""}`);
   const barra = (id, pct, invertido) => {
     const b = $(id);
     const ancho = `${Math.max(0, Math.min(100, pct))}%`;
@@ -842,7 +1027,8 @@ function bucle(ahora) {
   ultimo = ahora;
   if (!vehiculo || document.hidden || preparando) return;
 
-  if (estado === "jugando" || estado === "terminando") {
+  const enMarcha = estado === "jugando" || estado === "terminando" || rodandoFin;
+  if (enMarcha) {
     if (estado === "jugando" && tRevivir > 0 && (tRevivir -= dt) <= 0) revivir();
     const entrada = controles.actualizar(dt);
     acumulador += dt;
@@ -857,23 +1043,29 @@ function bucle(ahora) {
     if (trafico.gritos.length) { gritar(trafico.gritos[trafico.gritos.length - 1]); trafico.gritos.length = 0; }
     if (trafico.noticias.length) { aviso(trafico.noticias[trafico.noticias.length - 1], 1.2); trafico.noticias.length = 0; }
     if (choque && vehiculo.estado === "ok") procesarChoque(choque);
+    tomarKolas(kolas.actualizar(dt, vehiculo));
+    imitadores.actualizar(dt, vehiculo);
     procesarEventos();
     tramos.actualizar(vehiculo.s);
+    if (ciudadPreparada && vehiculo.s > pista.meta - PREPARA_CIUDAD) ciudadPreparada.tramos.actualizar(8);
     sonido.actualizar({
       rpm: vehiculo.rpm, v: vehiculo.v,
       chirrido: (vehiculo.raspando ? 0.2 : 0) + (vehiculo.derrapando ? 0.15 : 0) + (vehiculo.frenando ? 0.18 : 0) + Math.max(0, Math.abs(vehiculo.acelLat) - 4.5) * 0.05,
-      motorVivo: vehiculo.estado === "ok",
+      motorVivo: vehiculo.estado === "ok" || (vehiculo.estado === "llegada" && vehiculo.v > 0),
     });
     actualizarHud(dt);
+    tAvisoProtegido = Math.max(0, tAvisoProtegido - dt);
   }
   if (estado === "terminando" && (tFin -= dt) <= 0 && mostrarFin) {
     const mostrar = mostrarFin; mostrarFin = null; mostrar();
   }
-  if (estado === "jugando" || estado === "terminando") {
+  if (rodandoFin && estado === "fin" && vehiculo.v <= 0) rodandoFin = false;
+  if (enMarcha) {
     colocarTorito(dt);
     colocarCamara(dt);
   }
   cielo.position.copy(camara.position);
+  if (decorado) decorado.animar(dt, camara.position);
   if (cieloMat.map && !uniformesCielo.cieloListo.value) {
     // La niebla toma el color de la foto del cielo apenas termina de cargar
     uniformesCielo.cieloNiebla.value = cieloMat.map;
@@ -889,11 +1081,12 @@ function bucle(ahora) {
   }
   if (sombrasCadaDos && cuadroSombra++ % 2 === 0) renderer.shadowMap.needsUpdate = true;
   renderer.render(escena, camara);
+  liberarMundosPendientes();
 }
 
 // ---------- Vidas (corazones pixel-art) ----------
-// En Carrera hay más tráfico y gente: 8 corazones en vez de 3
-const maxVidas = () => (modoJuego === "carrera" ? 8 : 3);
+// En Carrera hay más tráfico y gente: 8 corazones en vez de 4
+const maxVidas = () => (modoJuego === "carrera" ? 8 : 4);
 let vidas = maxVidas(), tInvulnerable = 0, caidaFinal = false;
 const CORAZON = [
   ".KKK.KKK.",
@@ -905,24 +1098,43 @@ const CORAZON = [
   "...KRK...",
   "....K....",
 ];
-function svgCorazon(lleno) {
-  const color = { K: "#2b0000", R: lleno ? "#e3131b" : "#3d3d3d", W: lleno ? "#ffb3b3" : "#5a5a5a" };
+// parte: 0 vacío, 0.5 mitad izquierda llena, 1 lleno
+function svgCorazon(parte) {
+  const colorDe = (lleno) => ({ K: "#2b0000", R: lleno ? "#e3131b" : "#3d3d3d", W: lleno ? "#ffb3b3" : "#5a5a5a" });
   let rects = "";
   CORAZON.forEach((fila, y) => [...fila].forEach((c, x) => {
-    if (c !== ".") rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${color[c]}"/>`;
+    if (c !== ".") rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${colorDe(parte === 1 || (parte > 0 && x < 4.5))[c]}"/>`;
   }));
-  return `<svg viewBox="0 0 9 8" shape-rendering="crispEdges" class="${lleno ? "" : "vacio"}">${rects}</svg>`;
+  return `<svg viewBox="0 0 9 8" shape-rendering="crispEdges" class="${parte ? "" : "vacio"}">${rects}</svg>`;
 }
+// Corazón extra: la kola puede dar uno más allá del máximo, de medio en medio
+const topeVidas = () => maxVidas() + 1;
 function dibujarVidas(perdida = -1) {
-  $("vidas").innerHTML = Array.from({ length: maxVidas() }, (_, i) => svgCorazon(i < vidas)).join("");
-  if (perdida >= 0) $("vidas").children[perdida].classList.add("perdido");
+  const total = Math.max(maxVidas(), Math.ceil(vidas));
+  $("vidas").innerHTML = Array.from({ length: total }, (_, i) => svgCorazon(Math.max(0, Math.min(1, vidas - i)))).join("");
+  if (perdida >= 0) $("vidas").children[Math.min(perdida, total - 1)]?.classList.add("perdido");
+}
+function tomarKolas(cuantas) {
+  if (!cuantas) return;
+  vidas = Math.min(topeVidas(), vidas + cuantas * 0.5);
+  dibujarVidas(Math.ceil(vidas) - 1);
+  vibrar(40);
+  aviso("¡Pirañita! +½ corazón", 1.4);
+}
+
+// Mensaje grande al centro para los cambios de zona
+let tCartel = 0;
+function cartelGrande(texto, segundos) {
+  $("cartel").textContent = texto;
+  $("cartel").classList.add("visible");
+  tCartel = segundos;
 }
 
 function perderVida(motivo) {
   controles.centrarDireccion();
   vehiculo.giro = 0;
-  vidas--;
-  dibujarVidas(vidas);
+  vidas = Math.max(0, vidas - 1);   // un choque quita un corazón entero, aunque sea en dos mitades
+  dibujarVidas(Math.ceil(vidas));
   sonido.golpe(1);
   vibrar([122, 60, 203]);
   if (vidas <= 0) return terminar(false, motivo);
@@ -958,7 +1170,7 @@ function revivir() {
   if (estado !== "jugando") return;
   controles.centrarDireccion();
   const v = vehiculo;
-  Object.assign(v, { estado: "ok", motivo: "", psi: 0, d: ANCHO / 4, v: 4, h: 0, vy: 0, inclinacion: 0, balanceo: 0, giro: 0 });
+  Object.assign(v, { estado: "ok", motivo: "", psi: 0, d: pista.ancho / 4, v: 4, h: 0, vy: 0, inclinacion: 0, balanceo: 0, giro: 0 });
   v.dano = Math.min(v.dano, 60);
   v.suelo = pista.alturaLateral(v.d, v.s);
   v.acelLat = v.sacudida = v.ladoVuelco = 0;
@@ -1030,10 +1242,49 @@ function procesarEventos() {
     } else if (e.tipo === "choque") {
       perderVida(e.motivo);
     } else if (e.tipo === "llegada") {
-      terminar(true, modoJuego === "carrera" ? "¡Carrera terminada!" : "¡Llegaste a la avenida con vida!");
+      if (nivelJuego === 1) continuarHastaLaPlaya();
+      else terminar(true, modoJuego === "carrera" ? "¡Carrera terminada!" : pista.nivel.mensajeMeta);
     }
   }
   eventos.length = 0;
+}
+
+function continuarHastaLaPlaya() {
+  if (estado !== "jugando") return;
+  const anterior = vehiculo;
+  const mundoAnterior = { pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas, imitadores };
+  const exceso = Math.max(0, anterior.s - pista.meta);
+  // La formación del segundo tramo respeta la clasificación del cerro.
+  const rivales = trafico.agentes.filter((a) => a.rival).map((a) => ({
+    nombre: a.nombre, s: a.s, v: a.v, termino: a.termino, tiempoLlegada: a.tiempoLlegada,
+    delante: a.termino || a.s > anterior.s,
+  })).sort((a, b) => a.termino && b.termino ? a.tiempoLlegada - b.tiempoLlegada
+    : a.termino ? -1 : b.termino ? 1 : b.s - a.s);
+  metrosCompletados += pista.meta;
+  nivelJuego = 2;
+  usarMundo(ciudadPreparada);
+  ciudadPreparada = null;
+  // Se conserva el vehículo completo, los controles y el sonido. Solo cambia su pista.
+  Object.assign(vehiculo, { pista, s: 8 + exceso, estado: "ok", tiempo: 0, tiempoLlegada: null,
+    sigRompemuelle: 0, sigBache: 0 });
+  vehiculo.suelo = pista.alturaLateral(vehiculo.d, vehiculo.s);
+  let delante = rivales.filter((a) => a.delante).length, detras = 0;
+  for (const anteriorRival of rivales) {
+    const a = trafico.agentes.find((a) => a.rival && a.nombre === anteriorRival.nombre);
+    a.s = anteriorRival.delante ? vehiculo.s + 6 + 5 * delante-- : vehiculo.s - 2 - 2 * detras++;
+    a.v = anteriorRival.termino ? vehiculo.v : anteriorRival.v;
+    trafico.colocar(a);
+  }
+  vestirNivel();
+  colocarTorito(0);
+  colocarCamara(0, true);
+  tHud = 0;
+  actualizarHud(0);
+  cartelGrande(pista.nivel.avisoInicio, 4.5);
+  mundoAnterior.mundo.visible = false;
+  mundoAnterior.tramos.cerrar(false);
+  mundosPorLiberar.push(mundoAnterior);
+  partidaLista = false;
 }
 
 function terminar(gano, motivo) {
@@ -1042,25 +1293,30 @@ function terminar(gano, motivo) {
   caidaFinal = !gano;   // al perder la última vida el torito siempre termina volcado
   sonido.claxon(false);
   const puestoFinal = modoJuego === "carrera" ? trafico.puesto(vehiculo) : 0;
-  const metros = Math.round(Math.min(vehiculo.s, pista.largo - 60));
+  const metros = Math.round(metrosCompletados + Math.min(vehiculo.s, pista.meta));
   let record = 0;
-  try { record = +(localStorage.getItem(modoJuego === "carrera" ? "recordMetrosCarrera" : "recordMetros") || 0); } catch (_) { /* sin almacenamiento */ }
+  // Récord propio de la ruta completa: no mezclar con los antiguos niveles sueltos.
+  const claveRecord = modoJuego === "carrera" ? "recordRutaCompletaCarrera" : "recordRutaCompleta";
+  try { record = +(localStorage.getItem(claveRecord) || 0); } catch (_) { /* sin almacenamiento */ }
   const nuevo = metros > record;
-  if (nuevo) try { localStorage.setItem(modoJuego === "carrera" ? "recordMetrosCarrera" : "recordMetros", metros); } catch (_) { /* sin almacenamiento */ }
+  if (nuevo) try { localStorage.setItem(claveRecord, metros); } catch (_) { /* sin almacenamiento */ }
   tRevivir = 0;
-  tFin = gano ? 0.6 : 1.8;
+  tFin = gano ? 1.4 : 1.8;
+  rodandoFin = gano;
   mostrarFin = () => {
     estado = "fin";
     $("fin-titulo").textContent = gano ? (modoJuego === "carrera" ? puestoFinal === 1 ? "¡GANASTE!" : "¡META!" : "¡LLEGASTE!") : "¡PUM!";
     $("fin-msg").textContent = modoJuego === "carrera" && gano ? `Puesto ${puestoFinal} de 4 · ${motivo}` : motivo;
     $("fin-resumen").innerHTML =
-      `Recorrido: <b>${metros} m</b> de ${Math.round(pista.largo - 60)} m<br>` +
+      `Recorrido: <b>${metros} m</b> · ${nivelJuego === 1 ? "Cerro" : "Cerro → ciudad → playa"}<br>` +
       `Tiempo: <b>${tiempoPartida.toFixed(1)} s</b><br>` +
-      `Vidas: <b>${"❤".repeat(Math.max(0, vidas)) || "0"}</b> · Daño: <b>${Math.min(100, Math.round(vehiculo.dano))}%</b> · Freno: <b>${Math.round(vehiculo.freno)}%</b><br>` +
+      `Vidas: <b>${("❤".repeat(Math.floor(vidas)) + (vidas % 1 ? "½" : "")) || "0"}</b> · Daño: <b>${Math.min(100, Math.round(vehiculo.dano))}%</b><br>` +
+      `Ruta: <b>${rutaActual}</b><br>` +
       (nuevo ? "<b>¡Nuevo récord!</b>" : `Récord: ${Math.max(record, metros)} m`);
     $("hud").classList.add("oculto");
+    $("fin").classList.toggle("rodando", gano);
     $("fin").classList.add("visible");
-    sonido.actualizar({ rpm: 0, v: 0, chirrido: 0, motorVivo: false });
+    if (!gano) sonido.actualizar({ rpm: 0, v: 0, chirrido: 0, motorVivo: false });
   };
 }
 
@@ -1072,8 +1328,10 @@ function empezar() {
   $("fin").classList.remove("visible");
   $("pausa").classList.remove("visible");
   $("hud").classList.remove("oculto");
+  $("btn-guardar-ruta").textContent = "GUARDAR RUTA";
+  if (partidaLista && rutaPedida !== null && rutaActual !== rutaPedida) partidaLista = false;
   // La primera partida ya quedó armada y compilada: rehacerla justo aquí traba el arranque del sonido
-  if (!partidaLista || trafico.modo !== modoJuego) nuevaPartida();
+  if (!partidaLista || trafico.modo !== modoJuego || pista.nivel.id !== nivelJuego) nuevaPartida();
   partidaLista = false;
   estado = "jugando";
   ultimo = performance.now();
@@ -1098,6 +1356,18 @@ $("btn-jugar").addEventListener("click", async () => {
   } finally { $("btn-jugar").disabled = false; }
 });
 $("btn-otra").addEventListener("click", empezar);
+$("btn-repetir").addEventListener("click", () => { repetirRuta = true; empezar(); });
+$("btn-guardar-ruta").addEventListener("click", () => {
+  try { localStorage.setItem("rutasGuardadas", JSON.stringify([...new Set([rutaActual, ...rutasGuardadas()])].slice(0, 20))); } catch (_) { /* sin almacenamiento */ }
+  mostrarRutasGuardadas();
+  $("btn-guardar-ruta").textContent = `Ruta ${rutaActual} guardada`;
+});
+$("ruta-codigo").value = rutaPedida ?? "";
+$("ruta-codigo").addEventListener("change", (e) => {
+  rutaPedida = leerRuta(e.target.value);
+  if (rutaPedida === null) e.target.value = "";
+});
+mostrarRutasGuardadas();
 function mostrarModo() {
   const carrera = modoJuego === "carrera";
   $("btn-modo").textContent = `Modo: ${carrera ? "Carrera" : "Sin frenos"}`;
@@ -1136,16 +1406,19 @@ function pausar() {
 $("btn-pausa").addEventListener("click", pausar);
 $("btn-cam").addEventListener("click", alternarCamara);
 $("btn-seguir").addEventListener("click", pausar);
-$("btn-salir").addEventListener("click", () => {
+function salirAlMenu() {
   estado = "inicio";
-  tRevivir = tFin = 0; mostrarFin = null;
+  tRevivir = tFin = 0; mostrarFin = null; rodandoFin = false;
   controles.limpiar();
   sonido.silenciar(false);
   sonido.actualizar({ rpm: 0, v: 0, chirrido: 0, motorVivo: false });
   $("pausa").classList.remove("visible");
+  $("fin").classList.remove("visible");
   $("hud").classList.add("oculto");
   $("inicio").classList.add("visible");
-});
+}
+$("btn-salir").addEventListener("click", salirAlMenu);
+$("btn-menu-fin").addEventListener("click", salirAlMenu);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     if (estado === "jugando") pausar();
@@ -1217,8 +1490,9 @@ mostrarVibracion();
 $("version-pausa").textContent = $("version").textContent;
 requestAnimationFrame(bucle);
 // El catálogo se toma antes de esperar: así sus texturas entran en la misma carga.
-trafico.devolverCatalogo(trafico.tomarCatalogo());
-esperarTexturas((p) => mostrarCarga(p * PARTE_TEXTURAS)).then(() => prepararRender(PARTE_TEXTURAS));
+trafico.devolverCatalogo(trafico.tomarCatalogo(true));
+cargarTexturasN2();
+esperarTexturas((p) => mostrarCarga(p * PARTE_TEXTURAS)).then(() => { vestirNivel(); return prepararRender(PARTE_TEXTURAS); });
 
 // Acceso para depuración desde la consola
-window.__juego = { get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, escena, camara, renderer, THREE, nuevaPartida };
+window.__juego = { get vidas() { return vidas; }, get kolas() { return kolas; }, get imitadores() { return imitadores; }, get trafico() { return trafico; }, perderVida, get nivel() { return nivelJuego; }, get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, get trafico() { return trafico; }, get vidas() { return vidas; }, get tiempo() { return tiempoPartida; }, escena, camara, renderer, THREE, nuevaPartida };

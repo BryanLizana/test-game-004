@@ -16,7 +16,9 @@ Te cortaron el cable del freno. Baja un cerro de Lima en mototaxi, esquiva lo qu
 
 ## De qué se trata
 
-Empiezas en la trocha de tierra del cerro alto, entre chozas y pircas, y bajas unos 1,9 km hasta las calles de la avenida. Por el camino cambian los barrios y aparecen baches, rompemuelles, obras, desmonte, tráfico, peatones, perros y gatos.
+Empiezas en la trocha de tierra del cerro alto y sigues en una sola partida por la avenida, la ciudad, San Isidro, Chorrillos y el malecón hasta la playa. Los primeros 90 m de tierra no tienen muros; después vuelven las pircas. Por el camino cambian los barrios y aparecen baches, rompemuelles, obras, desmonte, tráfico, peatones, perros y gatos.
+
+Al salir del cerro aparece «¡Oh no, ahora el acelerador se trabó!». El motor empuja hasta 60 km/h, recupera velocidad después de frenar y puede superar esa velocidad en las bajadas fuertes. El cerro se conecta con la ciudad mediante un paso bajo nivel, con la ciudad preparada desde el inicio y sin pantalla de carga intermedia. Conservas vidas, daño, freno y tiempo. En la ciudad circulan más carros y bicicletas; los deportivos vienen de frente por el carril contrario. La llegada se celebra en la playa, y OTRA VEZ reinicia desde el cerro.
 
 El freno nunca detiene la moto y solo aguanta 5 segundos: se recarga despacio al soltarlo y, si lo vacías, queda bloqueado 5 segundos. Si tomas una curva muy rápido, el torito se levanta en dos ruedas y se vuelca.
 
@@ -24,7 +26,7 @@ El freno nunca detiene la moto y solo aguanta 5 segundos: se recarga despacio al
 
 | Modo | Vidas | En qué consiste |
 |---|---|---|
-| **Sin frenos** | 3 | La bajada original, con todos los obstáculos. |
+| **Sin frenos** | 4 | La bajada original, con todos los obstáculos. |
 | **Carrera** | 8 | La misma bajada y la misma física contra tres toritos rivales. Hay autos que suben por el carril contrario y personas que cruzan, pero no animales ni obras. |
 
 Se puede jugar de día o de noche, y en primera o tercera persona.

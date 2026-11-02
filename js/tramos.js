@@ -1,7 +1,7 @@
 import * as THREE from "three";
-import { CHUNK } from "./pista.js?v=1.6.8";
-import { crearChoza, liberarRecursos } from "./modelos.js?v=1.6.8";
-import { reserva } from "./reciclaje.js?v=1.6.8";
+import { CHUNK } from "./pista.js?v=1.8.8";
+import { crearChoza, liberarRecursos } from "./modelos.js?v=1.8.8";
+import { reserva } from "./reciclaje.js?v=1.8.8";
 
 // Carga por tramos: solo existen los bloques cercanos al torito. Al avanzar se piden los de
 // adelante a un Web Worker (que calcula la geometría fuera del hilo principal), se montan al
@@ -18,7 +18,7 @@ const ALCANCE_VISTA = 430;  // el fundido con el cielo termina a 420 m
 // baches, letreros…): casi no se distinguen y son la mayoría de las llamadas de dibujo.
 const DETALLE_LEJOS = 150;
 const TERRENO_LEJOS = 200;   // m hasta la losa desde donde se usa su versión simple
-const ES_DETALLE = /^(bache|reparacion|grieta|huella|letreros|porton|grafiti|reja)/;
+const ES_DETALLE = /^(bache|reparacion|grieta|huella|letreros|porton|grafiti|reja|vitrinas)/;
 const SIEMPRE_VISIBLE = new Set(["geoCruzPalo", "geoCruzBrazo"]);   // la cruz del cerro se ve de lejos
 
 // Un solo worker para todo el juego: se reutiliza entre partidas
@@ -26,7 +26,7 @@ let obrero = null, obreroFallo = false;
 function obtenerObrero() {
   if (obrero || obreroFallo || typeof Worker === "undefined") return obrero;
   try {
-    obrero = new Worker(new URL("./obrero-pista.js?v=1.6.8", import.meta.url), { type: "module" });
+    obrero = new Worker(new URL("./obrero-pista.js?v=1.8.8", import.meta.url), { type: "module" });
     obrero.addEventListener("error", () => { obreroFallo = true; obrero = null; });
   } catch (_) {
     obreroFallo = true;
@@ -104,14 +104,17 @@ export class GestorTramos {
         if (!this.bloques.has(data.datos.indice)) this.listos.push(data.datos);
       };
       this.obrero.addEventListener("message", this.alMensaje);
-      this.obrero.postMessage({ tipo: "pista", partida: this.partida, semilla, claves: this.claves, medidas: pista.medidasChoza });
+      this.obrero.postMessage({ tipo: "pista", partida: this.partida, semilla, nivel: pista.nivel.id, claves: this.claves, medidas: pista.medidasChoza });
     }
   }
 
   // Deja de escuchar al worker (al cambiar de partida)
-  cerrar() {
-    if (this.obrero) this.obrero.removeEventListener("message", this.alMensaje);
-    this.liberarTodo();
+  cerrar(liberar = true) {
+    if (this.obrero) {
+      this.obrero.removeEventListener("message", this.alMensaje);
+      this.obrero.postMessage({ tipo: "cerrar", partida: this.partida });
+    }
+    if (liberar) this.liberarTodo();
     this.listos.length = 0;
     this.pedidos.clear();
   }

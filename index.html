@@ -8,7 +8,7 @@
   <meta name="apple-mobile-web-app-capable" content="yes">
   <title>¡Torito sin control!</title>
   <link rel="preload" as="image" href="assets/img/carga-perro-torito.png">
-  <link rel="stylesheet" href="css/style.css?v=1.6.8">
+  <link rel="stylesheet" href="css/style.css?v=1.8.8">
   <script type="importmap">
     {
       "imports": {
@@ -25,7 +25,7 @@
   <section id="inicio" class="pantalla visible">
     <div class="titulo">
       <h1><picture><source media="(max-height: 480px)" srcset="assets/img/titulo-ancho.svg"><img class="logo" src="assets/img/titulo.svg" alt="¡Torito sin control!"></picture></h1>
-      <p class="sub">Torito en bajada · Simulador</p>
+      <p class="sub">Del cerro a la playa · Una sola escapada</p>
       <p class="autores">by Bryan Lizana and Cero · <a href="https://github.com/BryanLizana/test-game-004" target="_blank" rel="noopener">GitHub</a></p>
     </div>
     <div class="acciones">
@@ -34,14 +34,16 @@
       <div class="opciones">
         <button id="btn-modo" class="btn-chico">Modo: Sin frenos</button>
         <button id="btn-camara-ini" class="btn-chico">Cámara: 1ª persona</button>
-        <button id="btn-hora" class="btn-chico">Hora: Día ☀️</button>
+        <button id="btn-hora" class="btn-chico" disabled>Hora: Día ☀️</button>
+        <input id="ruta-codigo" class="btn-chico ruta" type="text" inputmode="numeric" list="rutas-guardadas" placeholder="Ruta: al azar" aria-label="Número de ruta" autocomplete="off">
+        <datalist id="rutas-guardadas"></datalist>
         <button id="btn-vibracion" class="btn-chico">Vibración: Suave</button>
       </div>
       <p class="ayuda" id="ayuda-controles">
         <b>Celular:</b> en vertical u horizontal, inclina el teléfono como un timón o usa ◀ ▶.<br>
         <b>PC:</b> ← → dirección · S freno (se gasta) · H claxon · C cámara
       </p>
-      <span id="version" class="version">v1.6.8</span>
+      <span id="version" class="version">v1.8.8</span>
     </div>
   </section>
 
@@ -54,6 +56,11 @@
     <div class="resumen" id="fin-resumen"></div>
     <div class="acciones">
       <button id="btn-otra" class="btn">OTRA VEZ</button>
+      <div class="opciones">
+        <button id="btn-repetir" class="btn-chico">REPETIR ESTA RUTA</button>
+        <button id="btn-guardar-ruta" class="btn-chico">GUARDAR RUTA</button>
+        <button id="btn-menu-fin" class="btn-chico">MENÚ</button>
+      </div>
     </div>
   </section>
 
@@ -64,6 +71,7 @@
       <button id="btn-seguir" class="btn">SEGUIR</button>
       <button id="btn-vibracion-p" class="btn-chico">Vibración: Suave</button>
       <button id="btn-salir" class="btn-chico">Salir al inicio</button>
+      <span class="version" id="ruta-pausa"></span>
       <span class="version" id="version-pausa"></span>
     </div>
   </section>
@@ -83,6 +91,7 @@
       <div id="aviso"></div>
       <div id="alerta">¡EN DOS RUEDAS!</div>
     </div>
+    <div id="cartel" class="cartel" role="status"></div>
     <div id="vidas" aria-label="Vidas"></div>
 
     <div class="tablero">
@@ -107,6 +116,6 @@
     </div>
   </div>
 
-  <script type="module" src="js/main.js?v=1.6.8"></script>
+  <script type="module" src="js/main.js?v=1.8.8"></script>
 </body>
 </html>
