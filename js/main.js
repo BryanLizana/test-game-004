@@ -1,17 +1,18 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.1";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.2";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.1";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.1";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.1";
-import { armarDecorado } from "./decorado-nivel2.js?v=1.8.1";
-import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.1";
-import { crearKolas } from "./kolas.js?v=1.8.1";
-import { Trafico } from "./trafico.js?v=1.8.1";
-import { Controles } from "./controles.js?v=1.8.1";
-import { Sonido } from "./audio.js?v=1.8.1";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.1";
-import { crearLetreros } from "./ambiente.js?v=1.8.1";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.2";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.2";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.2";
+import { armarDecorado } from "./decorado-nivel2.js?v=1.8.2";
+import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.2";
+import { crearKolas } from "./kolas.js?v=1.8.2";
+import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.2";
+import { Trafico } from "./trafico.js?v=1.8.2";
+import { Controles } from "./controles.js?v=1.8.2";
+import { Sonido } from "./audio.js?v=1.8.2";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.2";
+import { crearLetreros } from "./ambiente.js?v=1.8.2";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -711,7 +712,8 @@ async function prepararRender(desde = 0) {
 // ---------- Estado de juego ----------
 const controles = new Controles();
 const sonido = new Sonido();
-let pista, tramos, vehiculo, trafico, decorado = null, mundo = null, pasoUrbano = null, kolas = null;
+let pista, tramos, vehiculo, trafico, decorado = null, mundo = null, pasoUrbano = null, kolas = null, imitadores = null;
+precargarImitadores();
 let ciudadPreparada = null;
 const mundosPorLiberar = [];
 let estado = "inicio";
@@ -751,7 +753,7 @@ function crearMundo(nivel) {
   const paso = crearPasoUrbano(p, grupo);
   gestor.precargar(8);
   return { pista: p, tramos: gestor, trafico: new Trafico(grupo, p, modoJuego), decorado: decoracion, mundo: grupo, pasoUrbano: paso,
-    kolas: crearKolas(p, grupo, mat.kola) };
+    kolas: crearKolas(p, grupo, mat.kola), imitadores: crearImitadores(p, grupo) };
 }
 
 function liberarMundo(datos) {
@@ -761,12 +763,13 @@ function liberarMundo(datos) {
   datos.decorado?.liberar();
   datos.pasoUrbano.liberar();
   datos.kolas.liberar();
+  datos.imitadores.liberar();
   if (datos.pista.final) liberarRecursos(datos.pista.final, recursosPista);
   escena.remove(datos.mundo);
 }
 
 function usarMundo(datos) {
-  ({ pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas } = datos);
+  ({ pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas, imitadores } = datos);
   mundo.visible = true;
 }
 
@@ -785,7 +788,7 @@ function nuevaPartida() {
   if (!repetirRuta) rutaActual = rutaPedida ?? 1 + Math.floor(Math.random() * RUTA_MAX);
   repetirRuta = false;
   $("ruta-pausa").textContent = `Ruta ${rutaActual}`;
-  liberarMundo({ pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas });
+  liberarMundo({ pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas, imitadores });
   liberarMundo(ciudadPreparada);
   tRevivir = tFin = 0; mostrarFin = null; rodandoFin = false;
   $("fin").classList.remove("rodando");
@@ -1027,6 +1030,7 @@ function bucle(ahora) {
     if (trafico.noticias.length) { aviso(trafico.noticias[trafico.noticias.length - 1], 1.2); trafico.noticias.length = 0; }
     if (choque && vehiculo.estado === "ok") procesarChoque(choque);
     tomarKolas(kolas.actualizar(dt, vehiculo));
+    imitadores.actualizar(dt, vehiculo);
     procesarEventos();
     tramos.actualizar(vehiculo.s);
     sonido.actualizar({
@@ -1233,7 +1237,7 @@ function procesarEventos() {
 function continuarHastaLaPlaya() {
   if (estado !== "jugando") return;
   const anterior = vehiculo;
-  const mundoAnterior = { pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas };
+  const mundoAnterior = { pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas, imitadores };
   const exceso = Math.max(0, anterior.s - pista.meta);
   // La formación del segundo tramo respeta la clasificación del cerro.
   const rivales = trafico.agentes.filter((a) => a.rival).map((a) => ({
@@ -1476,4 +1480,4 @@ cargarTexturasN2();
 esperarTexturas((p) => mostrarCarga(p * PARTE_TEXTURAS)).then(() => { vestirNivel(); return prepararRender(PARTE_TEXTURAS); });
 
 // Acceso para depuración desde la consola
-window.__juego = { get vidas() { return vidas; }, get kolas() { return kolas; }, get trafico() { return trafico; }, perderVida, get nivel() { return nivelJuego; }, get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, get trafico() { return trafico; }, get vidas() { return vidas; }, get tiempo() { return tiempoPartida; }, escena, camara, renderer, THREE, nuevaPartida };
+window.__juego = { get vidas() { return vidas; }, get kolas() { return kolas; }, get imitadores() { return imitadores; }, get trafico() { return trafico; }, perderVida, get nivel() { return nivelJuego; }, get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, get trafico() { return trafico; }, get vidas() { return vidas; }, get tiempo() { return tiempoPartida; }, escena, camara, renderer, THREE, nuevaPartida };
