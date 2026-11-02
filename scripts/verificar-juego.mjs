@@ -338,7 +338,7 @@ for (const semilla of [3, 42, 777, 2026]) {
   for (let k = p.numBloques; k < p.numPiezas; k += 9) assert.ok(p.datosBloque(k, espejo).mallas[0].pos.every(Number.isFinite), "losa sin NaN");
   for (let s = 0; s < p.largo; s += 1) {
     const m = p.muestra(s);
-    if (Math.abs(m.k) > 0.0005 && p.barrio(s) !== "bajada") assert.ok(1 / Math.abs(m.k) >= 51, "curva abierta en s=" + s);
+    if (Math.abs(m.k) > 0.0005 && p.barrio(s) !== "bajada") assert.ok(1 / Math.abs(m.k) >= 40, "curva abierta en s=" + s);
   }
   // Sin tocar nada, siguiendo la calle en línea recta: no se para y las curvas no vuelcan a nadie
   const v = new Vehiculo(p), dt = 1 / 120;
@@ -406,7 +406,19 @@ assert.ok(traficoOriginal.agentes.some((a) => a.tipo === "desmonte"));
     const finSan = p.tramosPuestos.find((x) => x.barrio === "sanIsidro").s1;
     assert.ok(t.paraderos.length >= 3 && t.paraderos.every((s) => s < finSan), "paraderos solo en ciudad y San Isidro");
     assert.ok(t.agentes.some((a) => a.cruzando), "hay autos que cruzan");
-    assert.ok(t.agentes.filter((a) => a.tipo === "semaforo").length === t.agentes.filter((a) => a.cruzando).length, "cada cruce tiene semáforo");
+    assert.ok(t.agentes.filter((a) => a.tipo === "semaforo").length === t.agentes.filter((a) => a.cruzando).length * 2, "cada cruce tiene sus dos semáforos");
+    assert.ok(p.bocacalles.length >= 4, "al menos 4 bocacalles");
+    assert.ok(p.bocacalles.every((b, i) => i === 0 || b.s - p.bocacalles[i - 1].s >= 180), "separadas 180 m o más");
+    for (const b of p.bocacalles) {
+      assert.ok(!p.casas.flat().some((c) => c.s0 < b.s + 7 && c.s1 > b.s - 7), "ningún lote pisa la bocacalle");
+      assert.ok(!p.postes.some((x) => Math.abs(x.s - b.s) < 8) && !t.paraderos.some((x) => Math.abs(x - b.s) < 25), "esquina despejada");
+      assert.ok(p.alturaLateral(4, b.s) < 0.03 && p.alturaLateral(-4, b.s) < 0.03, "vereda rebajada");
+      const auto = t.agentes.find((a) => a.cruzando && a.s === b.s);
+      assert.ok(Math.abs(auto.d) === 12, "el auto espera en la transversal");
+    }
+    assert.deepEqual(new Pista(semilla, 2).bocacalles, p.bocacalles, "la misma semilla abre las mismas calles");
+    const bloque = p.datosBloque(Math.floor(p.bocacalles[0].s / 60), new Proxy({}, { get: (_, clave) => clave === "letreros" ? [] : clave }));
+    assert.ok(bloque.mallas.every((m) => m.pos.every(Number.isFinite)), "malla de la bocacalle válida");
     const veh = { s: 0, d: 2.6, v: 14, h: 0, estado: "ok", invulnerable: false };
     const vistos = new Set();
     let chocesDeportivo = 0, avisos = 0, busTrasBajada = 0;

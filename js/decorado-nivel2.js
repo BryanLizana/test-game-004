@@ -2,7 +2,7 @@
 // sombrillas y botes). Cada pieza de cada modelo es un solo InstancedMesh para todo el nivel, así que
 // suma pocas llamadas de dibujo aunque haya decenas de árboles.
 import * as THREE from "three";
-import { crearFicus, crearPalmera, crearSombrilla, crearBote } from "./modelos-nivel2.js?v=1.7.3";
+import { crearFicus, crearPalmera, crearSombrilla, crearBote } from "./modelos-nivel2.js?v=1.8.1";
 
 const TAM_MAR = 3200;
 const COLORES_SOMBRILLA = [0xe53935, 0x1e88e5, 0xfdd835, 0x43a047];
@@ -41,7 +41,7 @@ export function armarDecorado(pista, escena, cargador) {
   const ficus = [], palmeras = [], botes = [];
   const si = tramo("sanIsidro"), mal = tramo("malecon"), pla = tramo("playa");
   for (let s = si.s0 + 8; s < si.s1 - 8; s += 16 + azar() * 12) {
-    ficus.push(puesto(s, (azar() < 0.5 ? -1 : 1) * borde, 0.85 + azar() * 0.3, alto));
+    if (!pista.bocaEn(s, 10)) ficus.push(puesto(s, (azar() < 0.5 ? -1 : 1) * borde, 0.85 + azar() * 0.3, alto));
   }
   for (let s = mal.s0 + 6; s < mal.s1; s += 18 + azar() * 8) palmeras.push(puesto(s, pista.ancho / 2 + pista.vereda - 0.5, 0.9 + azar() * 0.3, alto));
   for (let s = pla.s0 + 10; s < pla.s1 - 5; s += 22) palmeras.push(puesto(s, -(pista.ancho / 2 + 6 + azar() * 6), 0.9 + azar() * 0.4, -0.5));

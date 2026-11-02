@@ -1,16 +1,17 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.7.3";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.1";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.7.3";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.7.3";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.7.3";
-import { armarDecorado } from "./decorado-nivel2.js?v=1.7.3";
-import { crearPasoUrbano } from "./paso-urbano.js?v=1.7.3";
-import { Trafico } from "./trafico.js?v=1.7.3";
-import { Controles } from "./controles.js?v=1.7.3";
-import { Sonido } from "./audio.js?v=1.7.3";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.7.3";
-import { crearLetreros } from "./ambiente.js?v=1.7.3";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.1";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.1";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.1";
+import { armarDecorado } from "./decorado-nivel2.js?v=1.8.1";
+import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.1";
+import { crearKolas } from "./kolas.js?v=1.8.1";
+import { Trafico } from "./trafico.js?v=1.8.1";
+import { Controles } from "./controles.js?v=1.8.1";
+import { Sonido } from "./audio.js?v=1.8.1";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.1";
+import { crearLetreros } from "./ambiente.js?v=1.8.1";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -223,6 +224,7 @@ const mat = {
   cerro: est(0x9b8466, { side: THREE.DoubleSide }),
   // Solo nivel 2: ver SOLO_N2 y cargarTexturasN2
   fachadaN2: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
+  kola: est(0xffc400, { roughness: 0.35, metalness: 0.35, emissive: 0x4a3400 }),
   sueloN2: est(0xffffff, { side: THREE.DoubleSide, vertexColors: true }),
   arenaN2: est(0xd9c29a, { side: THREE.DoubleSide }),
   vitrinas: est(0x46586a, { side: THREE.DoubleSide, roughness: 0.5 }),
@@ -565,11 +567,13 @@ function sombrasBaratas() {
 
 // ---------- Preparación antes de jugar: texturas, shaders y primer cuadro ----------
 // Materiales de la pista que se dibujan con instancias (el resto, como mallas normales).
-const INSTANCIADOS = new Set(["llantaPintada", "posteMadera", "poste", "foco", "charco", "ropa", "frazada", "cilindro",
+const INSTANCIADOS = new Set(["kola", "llantaPintada", "posteMadera", "poste", "foco", "charco", "ropa", "frazada", "cilindro",
   "cruz", "tanque", "fierro", "follaje", "corteza", "madera", "banca", "rompemuelle"]);
 const CON_COLOR = new Set(["llantaPintada", "follaje"]);   // instancias con color propio
 const TAMBIEN_MALLA = new Set(["madera"]);
 const SIN_USO = new Set(["prendas"]);
+
+textura(mat.kola, "assets/tex/n2/lata-kola.jpg");
 
 function esperarTexturas(alAvance) {
   if (!texturasCargando) return Promise.resolve();
@@ -707,7 +711,7 @@ async function prepararRender(desde = 0) {
 // ---------- Estado de juego ----------
 const controles = new Controles();
 const sonido = new Sonido();
-let pista, tramos, vehiculo, trafico, decorado = null, mundo = null, pasoUrbano = null;
+let pista, tramos, vehiculo, trafico, decorado = null, mundo = null, pasoUrbano = null, kolas = null;
 let ciudadPreparada = null;
 const mundosPorLiberar = [];
 let estado = "inicio";
@@ -723,18 +727,31 @@ let tRevivir = 0, tFin = 0, mostrarFin = null;
 let rodandoFin = false;   // ganó: el torito sigue rodando detrás de los resultados
 const recursosPista = new Set(Object.values(mat).flat());
 
+// Ruta: número que define la calle completa. Vacío = al azar. Se puede repetir o guardar.
+const RUTA_MAX = 999999;
+const leerRuta = (texto) => { const n = Math.floor(+texto); return n >= 1 && n <= RUTA_MAX ? n : null; };
+let rutaPedida = leerRuta(new URLSearchParams(location.search).get("ruta"));
+let rutaActual = rutaPedida ?? 1, repetirRuta = false;
+function rutasGuardadas() {
+  try { return JSON.parse(localStorage.getItem("rutasGuardadas")) || []; } catch (_) { return []; }
+}
+function mostrarRutasGuardadas() {
+  $("rutas-guardadas").innerHTML = rutasGuardadas().map((r) => `<option value="${r}"></option>`).join("");
+}
+
 function crearMundo(nivel) {
   const grupo = new THREE.Group();
   grupo.name = `mundo-${nivel}`;
   escena.add(grupo);
-  const semilla = (Math.random() * 1e9) | 0;
+  const semilla = nivel === 1 ? rutaActual : (rutaActual * 2654435761) % 2147483647;   // la ruta define los dos mundos
   const p = new Pista(semilla, nivel);
   const gestor = new GestorTramos(p, grupo, mat, semilla);
   if (nivel === 2) p.construirFinal(grupo);
   const decoracion = p.nivel.costa ? armarDecorado(p, grupo, cargador) : null;
   const paso = crearPasoUrbano(p, grupo);
   gestor.precargar(8);
-  return { pista: p, tramos: gestor, trafico: new Trafico(grupo, p, modoJuego), decorado: decoracion, mundo: grupo, pasoUrbano: paso };
+  return { pista: p, tramos: gestor, trafico: new Trafico(grupo, p, modoJuego), decorado: decoracion, mundo: grupo, pasoUrbano: paso,
+    kolas: crearKolas(p, grupo, mat.kola) };
 }
 
 function liberarMundo(datos) {
@@ -743,12 +760,13 @@ function liberarMundo(datos) {
   datos.trafico.liberarTodo();
   datos.decorado?.liberar();
   datos.pasoUrbano.liberar();
+  datos.kolas.liberar();
   if (datos.pista.final) liberarRecursos(datos.pista.final, recursosPista);
   escena.remove(datos.mundo);
 }
 
 function usarMundo(datos) {
-  ({ pista, tramos, trafico, decorado, mundo, pasoUrbano } = datos);
+  ({ pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas } = datos);
   mundo.visible = true;
 }
 
@@ -764,10 +782,15 @@ function liberarMundosPendientes() {
 
 function nuevaPartida() {
   nivelJuego = 1; metrosCompletados = 0;
-  liberarMundo({ pista, tramos, trafico, decorado, mundo, pasoUrbano });
+  if (!repetirRuta) rutaActual = rutaPedida ?? 1 + Math.floor(Math.random() * RUTA_MAX);
+  repetirRuta = false;
+  $("ruta-pausa").textContent = `Ruta ${rutaActual}`;
+  liberarMundo({ pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas });
   liberarMundo(ciudadPreparada);
   tRevivir = tFin = 0; mostrarFin = null; rodandoFin = false;
   $("fin").classList.remove("rodando");
+  tCartel = 0;
+  $("cartel").classList.remove("visible");
   eventos.length = 0;
   controles.limpiar();
   tGrito = tHud = tLuces = tRuido = 0;
@@ -956,6 +979,7 @@ function actualizarHud(dt) {
   frenoAnterior = vehiculo.freno;
   $("b-freno-vida").parentElement.classList.toggle("gastando", gastando);
   cuentaFreno(vehiculo, dt);
+  if (tCartel > 0 && (tCartel -= dt) <= 0) $("cartel").classList.remove("visible");
   if (tAviso > 0 && (tAviso -= dt) <= 0) $("aviso").classList.remove("visible");
   if (tGrito > 0 && (tGrito -= dt) <= 0) $("grito").classList.remove("visible");
   $("alerta").classList.toggle("visible", vehiculo.inclinacion > 0.15 && vehiculo.estado === "ok");
@@ -1002,6 +1026,7 @@ function bucle(ahora) {
     if (trafico.gritos.length) { gritar(trafico.gritos[trafico.gritos.length - 1]); trafico.gritos.length = 0; }
     if (trafico.noticias.length) { aviso(trafico.noticias[trafico.noticias.length - 1], 1.2); trafico.noticias.length = 0; }
     if (choque && vehiculo.estado === "ok") procesarChoque(choque);
+    tomarKolas(kolas.actualizar(dt, vehiculo));
     procesarEventos();
     tramos.actualizar(vehiculo.s);
     sonido.actualizar({
@@ -1054,24 +1079,43 @@ const CORAZON = [
   "...KRK...",
   "....K....",
 ];
-function svgCorazon(lleno) {
-  const color = { K: "#2b0000", R: lleno ? "#e3131b" : "#3d3d3d", W: lleno ? "#ffb3b3" : "#5a5a5a" };
+// parte: 0 vacío, 0.5 mitad izquierda llena, 1 lleno
+function svgCorazon(parte) {
+  const colorDe = (lleno) => ({ K: "#2b0000", R: lleno ? "#e3131b" : "#3d3d3d", W: lleno ? "#ffb3b3" : "#5a5a5a" });
   let rects = "";
   CORAZON.forEach((fila, y) => [...fila].forEach((c, x) => {
-    if (c !== ".") rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${color[c]}"/>`;
+    if (c !== ".") rects += `<rect x="${x}" y="${y}" width="1" height="1" fill="${colorDe(parte === 1 || (parte > 0 && x < 4.5))[c]}"/>`;
   }));
-  return `<svg viewBox="0 0 9 8" shape-rendering="crispEdges" class="${lleno ? "" : "vacio"}">${rects}</svg>`;
+  return `<svg viewBox="0 0 9 8" shape-rendering="crispEdges" class="${parte ? "" : "vacio"}">${rects}</svg>`;
 }
+// Corazón extra: la kola puede dar uno más allá del máximo, de medio en medio
+const topeVidas = () => maxVidas() + 1;
 function dibujarVidas(perdida = -1) {
-  $("vidas").innerHTML = Array.from({ length: maxVidas() }, (_, i) => svgCorazon(i < vidas)).join("");
-  if (perdida >= 0) $("vidas").children[perdida].classList.add("perdido");
+  const total = Math.max(maxVidas(), Math.ceil(vidas));
+  $("vidas").innerHTML = Array.from({ length: total }, (_, i) => svgCorazon(Math.max(0, Math.min(1, vidas - i)))).join("");
+  if (perdida >= 0) $("vidas").children[Math.min(perdida, total - 1)]?.classList.add("perdido");
+}
+function tomarKolas(cuantas) {
+  if (!cuantas) return;
+  vidas = Math.min(topeVidas(), vidas + cuantas * 0.5);
+  dibujarVidas(Math.ceil(vidas) - 1);
+  vibrar(40);
+  aviso("¡Kola! +½ corazón", 1.4);
+}
+
+// Mensaje grande al centro para los cambios de zona
+let tCartel = 0;
+function cartelGrande(texto, segundos) {
+  $("cartel").textContent = texto;
+  $("cartel").classList.add("visible");
+  tCartel = segundos;
 }
 
 function perderVida(motivo) {
   controles.centrarDireccion();
   vehiculo.giro = 0;
-  vidas--;
-  dibujarVidas(vidas);
+  vidas = Math.max(0, vidas - 1);   // un choque quita un corazón entero, aunque sea en dos mitades
+  dibujarVidas(Math.ceil(vidas));
   sonido.golpe(1);
   vibrar([122, 60, 203]);
   if (vidas <= 0) return terminar(false, motivo);
@@ -1189,7 +1233,7 @@ function procesarEventos() {
 function continuarHastaLaPlaya() {
   if (estado !== "jugando") return;
   const anterior = vehiculo;
-  const mundoAnterior = { pista, tramos, trafico, decorado, mundo, pasoUrbano };
+  const mundoAnterior = { pista, tramos, trafico, decorado, mundo, pasoUrbano, kolas };
   const exceso = Math.max(0, anterior.s - pista.meta);
   // La formación del segundo tramo respeta la clasificación del cerro.
   const rivales = trafico.agentes.filter((a) => a.rival).map((a) => ({
@@ -1217,9 +1261,7 @@ function continuarHastaLaPlaya() {
   colocarCamara(0, true);
   tHud = 0;
   actualizarHud(0);
-  tAvisoProtegido = 0;
-  aviso(pista.nivel.avisoInicio, 6);
-  tAvisoProtegido = 6;
+  cartelGrande(pista.nivel.avisoInicio, 4.5);
   mundoAnterior.mundo.visible = false;
   mundoAnterior.tramos.cerrar(false);
   mundosPorLiberar.push(mundoAnterior);
@@ -1249,7 +1291,8 @@ function terminar(gano, motivo) {
     $("fin-resumen").innerHTML =
       `Recorrido: <b>${metros} m</b> · ${nivelJuego === 1 ? "Cerro" : "Cerro → ciudad → playa"}<br>` +
       `Tiempo: <b>${tiempoPartida.toFixed(1)} s</b><br>` +
-      `Vidas: <b>${"❤".repeat(Math.max(0, vidas)) || "0"}</b> · Daño: <b>${Math.min(100, Math.round(vehiculo.dano))}%</b> · Freno: <b>${Math.round(vehiculo.freno)}%</b><br>` +
+      `Vidas: <b>${("❤".repeat(Math.floor(vidas)) + (vidas % 1 ? "½" : "")) || "0"}</b> · Daño: <b>${Math.min(100, Math.round(vehiculo.dano))}%</b><br>` +
+      `Ruta: <b>${rutaActual}</b><br>` +
       (nuevo ? "<b>¡Nuevo récord!</b>" : `Récord: ${Math.max(record, metros)} m`);
     $("hud").classList.add("oculto");
     $("fin").classList.toggle("rodando", gano);
@@ -1266,6 +1309,8 @@ function empezar() {
   $("fin").classList.remove("visible");
   $("pausa").classList.remove("visible");
   $("hud").classList.remove("oculto");
+  $("btn-guardar-ruta").textContent = "GUARDAR RUTA";
+  if (partidaLista && rutaPedida !== null && rutaActual !== rutaPedida) partidaLista = false;
   // La primera partida ya quedó armada y compilada: rehacerla justo aquí traba el arranque del sonido
   if (!partidaLista || trafico.modo !== modoJuego || pista.nivel.id !== nivelJuego) nuevaPartida();
   partidaLista = false;
@@ -1292,6 +1337,18 @@ $("btn-jugar").addEventListener("click", async () => {
   } finally { $("btn-jugar").disabled = false; }
 });
 $("btn-otra").addEventListener("click", empezar);
+$("btn-repetir").addEventListener("click", () => { repetirRuta = true; empezar(); });
+$("btn-guardar-ruta").addEventListener("click", () => {
+  try { localStorage.setItem("rutasGuardadas", JSON.stringify([...new Set([rutaActual, ...rutasGuardadas()])].slice(0, 20))); } catch (_) { /* sin almacenamiento */ }
+  mostrarRutasGuardadas();
+  $("btn-guardar-ruta").textContent = `Ruta ${rutaActual} guardada`;
+});
+$("ruta-codigo").value = rutaPedida ?? "";
+$("ruta-codigo").addEventListener("change", (e) => {
+  rutaPedida = leerRuta(e.target.value);
+  if (rutaPedida === null) e.target.value = "";
+});
+mostrarRutasGuardadas();
 function mostrarModo() {
   const carrera = modoJuego === "carrera";
   $("btn-modo").textContent = `Modo: ${carrera ? "Carrera" : "Sin frenos"}`;
@@ -1330,16 +1387,19 @@ function pausar() {
 $("btn-pausa").addEventListener("click", pausar);
 $("btn-cam").addEventListener("click", alternarCamara);
 $("btn-seguir").addEventListener("click", pausar);
-$("btn-salir").addEventListener("click", () => {
+function salirAlMenu() {
   estado = "inicio";
   tRevivir = tFin = 0; mostrarFin = null; rodandoFin = false;
   controles.limpiar();
   sonido.silenciar(false);
   sonido.actualizar({ rpm: 0, v: 0, chirrido: 0, motorVivo: false });
   $("pausa").classList.remove("visible");
+  $("fin").classList.remove("visible");
   $("hud").classList.add("oculto");
   $("inicio").classList.add("visible");
-});
+}
+$("btn-salir").addEventListener("click", salirAlMenu);
+$("btn-menu-fin").addEventListener("click", salirAlMenu);
 document.addEventListener("visibilitychange", () => {
   if (document.hidden) {
     if (estado === "jugando") pausar();
@@ -1416,4 +1476,4 @@ cargarTexturasN2();
 esperarTexturas((p) => mostrarCarga(p * PARTE_TEXTURAS)).then(() => { vestirNivel(); return prepararRender(PARTE_TEXTURAS); });
 
 // Acceso para depuración desde la consola
-window.__juego = { get nivel() { return nivelJuego; }, get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, get trafico() { return trafico; }, get vidas() { return vidas; }, get tiempo() { return tiempoPartida; }, escena, camara, renderer, THREE, nuevaPartida };
+window.__juego = { get vidas() { return vidas; }, get kolas() { return kolas; }, get trafico() { return trafico; }, perderVida, get nivel() { return nivelJuego; }, get vehiculo() { return vehiculo; }, get pista() { return pista; }, get estado() { return estado; }, get tramos() { return tramos; }, get trafico() { return trafico; }, get vidas() { return vidas; }, get tiempo() { return tiempoPartida; }, escena, camara, renderer, THREE, nuevaPartida };

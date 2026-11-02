@@ -1,4 +1,4 @@
-import { ANCHO } from "./pista.js?v=1.7.3";
+import { ANCHO } from "./pista.js?v=1.8.1";
 
 // Física simplificada de un torito en coordenadas de Frenet (s, d, psi).
 // Sin frenos: solo queda un freno gastado que baja la velocidad pero nunca detiene la moto.
@@ -114,8 +114,10 @@ export class Vehiculo {
     this.giro += Math.max(-dt * 2.2, Math.min(dt * 2.2, objetivo - this.giro));
 
     // --- Longitudinal ---
-    let a = aceleracionBajada(this.v, m.gFis ?? m.g, ROCE_MOTOR, Math.cos(this.psi), p.nivel?.velocidadTrabada);
-    if (frena && this.freno > 0 && this.h <= 0 && this.v > VEL_MIN_FRENO) {
+    // Al frenar se corta el empuje del acelerador trabado: si no, el motor le gana al freno
+    const frenandoDeVerdad = frena && this.freno > 0 && this.h <= 0 && this.v > VEL_MIN_FRENO;
+    let a = aceleracionBajada(this.v, m.gFis ?? m.g, ROCE_MOTOR, Math.cos(this.psi), frenandoDeVerdad ? 0 : p.nivel?.velocidadTrabada);
+    if (frenandoDeVerdad) {
       a -= FRENO * Math.min(1, (this.v - VEL_MIN_FRENO) / 2);
       this.frenando = true;
       if (!this.frenoPulso) this.freno = Math.max(0, this.freno - DESGASTE_FRENO * dt);

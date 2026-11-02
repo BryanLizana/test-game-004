@@ -1,9 +1,9 @@
 import * as THREE from "three";
-import { ANCHO, VEREDA } from "./pista.js?v=1.7.3";
-import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.7.3";
-import * as modelos from "./modelos.js?v=1.7.3";
-import * as modelosN2 from "./modelos-nivel2.js?v=1.7.3";
-import { reserva } from "./reciclaje.js?v=1.7.3";
+import { ANCHO, VEREDA } from "./pista.js?v=1.8.1";
+import { LARGO_TORITO, ANCHO_TORITO, ROCE_MOTOR, aceleracionBajada } from "./vehiculo.js?v=1.8.1";
+import * as modelos from "./modelos.js?v=1.8.1";
+import * as modelosN2 from "./modelos-nivel2.js?v=1.8.1";
+import { reserva } from "./reciclaje.js?v=1.8.1";
 const { crearCarro, crearTorito, crearPersona, crearPerro, animarCaminar } = modelos;
 
 // Lo que grita el chofer cuando alguien se le cruza
@@ -24,8 +24,10 @@ const CRUCE_ESPERA = 2.6;       // s antes de que llegue el jugador: arranca ent
 const CRUCE_ESPERA_MAX = 3.3;   // y este, así al llegar el auto está en el medio o ya pasándose de carril
 const SEMAFORO_AMBAR = 6.5;     // s antes de llegar
 const SEMAFORO_ROJO = 4.5;
-const FUERA_DE_CALLE = 3;       // m tras la línea de fachadas: el auto sale y entra tapado por ellas
+const CRUCE_D = 12;             // m del eje de la calle: ahí espera el auto, a la vista en la transversal
+const FIN_CRUCE = 22;           // m del eje: sigue por la transversal del otro lado hasta aquí
 const CICLISTA_V = 4;
+const MAX_CICLISTAS = 10;       // a la vez cerca del jugador
 const BUS_PARADO = 4;           // s que espera en un paradero
 
 // Mototaxis de la zona: azul, verde o amarillo, solos o combinados con blanco [carrocería, techo]
@@ -192,10 +194,10 @@ export class Trafico {
         });
       }
     } else {
-      for (let s = p.finTierra + 30; s < p.meta - 60; s += 70 + Math.random() * 110) {
+      for (let s = p.finTierra + 30; s < p.meta - 60; s += this.nivel2 ? 60 + Math.random() * 70 : 70 + Math.random() * 110) {
         if (p.enPasoUrbano?.(s)) continue;
         const m = p.muestra(s);
-        if (Math.abs(m.k) > 0.02 || this.paraderos.some((x) => Math.abs(x - s) < 18)) continue;
+        if (Math.abs(m.k) > 0.02 || this.paraderos.some((x) => Math.abs(x - s) < 18) || p.bocacalles?.some((b) => Math.abs(b.s - s) < 20)) continue;
         const lado = Math.random() < 0.5 ? -1 : 1;
         const tabla = this.tablaTrafico;
         this.agregar(tabla ? this.sortear(tabla.estacionados) : Math.random() < 0.8 ? "carro" : "torito", s, lado * (this.ancho / 2 - 1.0), 0, { estacionado: true, sentido: lado });
@@ -237,16 +239,14 @@ export class Trafico {
     if (!ciudad.length) return;
     const fin = Math.min(ciudad[ciudad.length - 1].s1, p.meta - 40);
     // Al salir del paso bajo nivel ya hay movimiento, sin esperar los temporizadores.
-    for (const [s, sentido] of [[145, -1], [205, 1], [270, -1], [330, 1]]) {
+    for (const [s, sentido] of [[145, -1], [190, 1], [235, -1], [285, 1], [330, -1], [385, 1], [440, -1]]) {
       if (s < fin) this.agregar("carro", s, sentido * this.carril, sentido * (sentido < 0 ? 9 : 5), { sentido });
     }
-    for (const s of [175, 285]) {
-      if (s < fin) this.agregar("persona", s, this.ancho / 2 - 1.4, CICLISTA_V, { ciclista: true, caminante: true, sentido: 1 });
-    }
+    for (let s = 165; s < Math.min(fin, 520); s += 45 + Math.random() * 35) this.agregarCiclista(s);
     const recta = (s, antes, despues) => [s - antes, s, s + despues].every((x) => Math.abs(p.muestra(x, this.muestra).k) < 0.005);
     // Si el punto cae en curva se busca la siguiente recta, en vez de perder la parada
     for (let s = 120; s < fin - 40;) {
-      if (!recta(s, 14, 10)) { s += 15; continue; }
+      if (!recta(s, 14, 10) || p.bocacalles.some((b) => Math.abs(b.s - s) < 30)) { s += 15; continue; }
       this.paraderos.push(s);
       // sentido -1: el paradero abre hacia la calzada desde la vereda derecha
       this.agregar("paradero", s + 8, this.ancho / 2 + this.vereda * 0.6, 0, { estatico: true, decorado: true, sentido: -1 });
@@ -256,18 +256,34 @@ export class Trafico {
       }
       s += 170 + Math.random() * 110;
     }
-    for (let s = 220; s < fin - 60;) {
-      if (!recta(s, 45, 15) || this.paraderos.some((x) => Math.abs(x - s) < 45)) { s += 15; continue; }
-      const semaforo = this.agregar("semaforo", s + 3, -(this.ancho / 2 + 0.5), 0, { estatico: true, decorado: true, sentido: -1 });
-      modelosN2.ponerSemaforo(semaforo.modelo, "verde");
+    // El borde de la transversal: desde aquí se cuenta el tiempo de salida, venga de donde venga
+    const salida = this.ancho / 2 + this.vereda + 3;
+    for (const { s } of p.bocacalles) {
       const lado = Math.random() < 0.5 ? -1 : 1;
-      const auto = this.agregar("carro", s, lado * (this.ancho / 2 + this.vereda + FUERA_DE_CALLE), 0, {
-        cruzando: true, esperando: true, lado, semaforo,
-        tCruce: CRUCE_ESPERA + Math.random() * (CRUCE_ESPERA_MAX - CRUCE_ESPERA),
+      // Uno mira al jugador con el brazo sobre la calle; el otro, al auto que espera en la transversal
+      const semaforo = this.agregar("semaforo", s + 8, -(this.ancho / 2 + 0.5), 0, { estatico: true, decorado: true, sentido: -1 });
+      const semaforoCalle = this.agregar("semaforo", s - lado * 5.4, lado * (this.ancho / 2 + this.vereda + 0.8), 0,
+        { estatico: true, decorado: true, giroExtra: lado > 0 ? -Math.PI / 2 : Math.PI / 2 });
+      modelosN2.ponerSemaforo(semaforo.modelo, "verde");
+      modelosN2.ponerSemaforo(semaforoCalle.modelo, "rojo");
+      const auto = this.agregar("carro", s, lado * CRUCE_D, 0, {
+        cruzando: true, esperando: true, lado, semaforo, semaforoCalle,
+        tCruce: CRUCE_ESPERA + Math.random() * (CRUCE_ESPERA_MAX - CRUCE_ESPERA) + (CRUCE_D - salida) / VEL_CRUCE,
       });
       [auto.largo, auto.ancho] = [auto.ancho, auto.largo];   // va atravesado: su largo ocupa la calle
-      s += 230 + Math.random() * 140;
+      // Fila detrás, quieta: hace que la esquina se sienta viva
+      for (let k = 1; k <= 1 + Math.floor(Math.random() * 2); k++) {
+        this.agregar("carro", s - lado * 1.9, lado * (CRUCE_D + 6.2 * k), 0, { estatico: true, decorado: true, enFila: true, lado });
+      }
     }
+  }
+
+  // Por toda la calle y en los dos sentidos: al medio tampoco se pasa gratis
+  carrilCiclista(sentido) { return sentido * (0.7 + Math.random() * (this.ancho / 2 - 1.6)); }
+  agregarCiclista(s) {
+    const sentido = Math.random() < 0.6 ? 1 : -1, d = this.carrilCiclista(sentido);
+    if (this.agentes.some((a) => !a.decorado && Math.abs(a.s - s) < 12 && Math.abs(a.d - d) < 1.8)) return;
+    this.agregar("persona", s, d, sentido * CICLISTA_V, { ciclista: true, caminante: true, sentido });
   }
 
   // Deportivos de frente y bicicletas en ciudad, San Isidro y malecón.
@@ -285,22 +301,22 @@ export class Trafico {
     }
     this.tCiclista -= dt;
     if (this.tCiclista <= 0) {
-      this.tCiclista = 4 + Math.random() * 2;
-      const s = veh.s + 130, sentido = Math.random() < 0.6 ? 1 : -1;
+      this.tCiclista = 1.6 + Math.random() * 1.4;
+      const s = veh.s + 130;
       if (["ciudad", "sanIsidro", "chorrillos", "malecon"].includes(p.barrio(s)) && s < p.meta - 20
-        && this.agentes.filter((a) => a.ciclista && a.s > veh.s - 30 && a.s < veh.s + 230).length < 4
-        && !this.agentes.some((a) => Math.abs(a.s - s) < 14 && Math.abs(a.d - sentido * (this.ancho / 2 - 1.4)) < 1.8)) {
-        this.agregar("persona", s, sentido * (this.ancho / 2 - 1.4), sentido * CICLISTA_V, { ciclista: true, caminante: true, sentido });
-      }
+        && this.agentes.filter((a) => a.ciclista && a.s > veh.s - 30 && a.s < veh.s + 230).length < MAX_CICLISTAS) this.agregarCiclista(s);
     }
   }
 
-  // Semáforo y auto que espera tras las fachadas: todo se mide en segundos hasta que llegue el jugador
+  // Semáforos y auto que espera en la transversal: todo se mide en segundos hasta que llegue el jugador
   moverCruce(a, dt, veh) {
     if (a.esperando) {
       if (a.s < veh.s) { a.retirar = true; return; }
       const t = (a.s - veh.s) / Math.max(veh.v, 6);
-      if (a.semaforo) modelosN2.ponerSemaforo(a.semaforo.modelo, t < SEMAFORO_ROJO ? "rojo" : t < SEMAFORO_AMBAR ? "ambar" : "verde");
+      if (a.semaforo) {
+        modelosN2.ponerSemaforo(a.semaforo.modelo, t < SEMAFORO_ROJO ? "rojo" : t < SEMAFORO_AMBAR ? "ambar" : "verde");
+        modelosN2.ponerSemaforo(a.semaforoCalle.modelo, t < SEMAFORO_ROJO ? "verde" : "rojo");
+      }
       if (t < a.tCruce) {
         a.esperando = false;
         a.vd = -a.lado * VEL_CRUCE;
@@ -310,7 +326,7 @@ export class Trafico {
     }
     if (a.tParado > 0) return;
     a.d += a.vd * dt;
-    if (a.d * a.vd > 0 && Math.abs(a.d) > this.ancho / 2 + this.vereda + FUERA_DE_CALLE) a.retirar = true;
+    if (a.d * a.vd > 0 && Math.abs(a.d) > FIN_CRUCE) a.retirar = true;
   }
 
   // Siempre viene por el carril contrario. Frena ante otros autos sin invadir al jugador.
@@ -355,10 +371,10 @@ export class Trafico {
     const h = this.pista.alturaLateral(a.d, a.s);
     this.pista.aMundo(a.s, a.d, h, a.modelo.position, m);
     let rumbo = m.th;
-    if (a.peaton || a.cruzando) rumbo += a.vd !== 0 ? Math.sign(a.vd) * Math.PI / 2 : (a.lado > 0 ? -Math.PI / 2 : Math.PI / 2);
+    if (a.peaton || a.cruzando || a.enFila) rumbo += a.vd !== 0 ? Math.sign(a.vd) * Math.PI / 2 : (a.lado > 0 ? -Math.PI / 2 : Math.PI / 2);
     else if (a.v < 0 || a.sentido < 0) rumbo += Math.PI;
     a.modelo.rotation.set(0, -rumbo + (a.giroExtra || 0), 0, "YXZ");
-    if (!a.peaton && !a.caminante && !a.cruzando) a.modelo.rotation.x = -Math.atan(m.g) * (a.v < 0 || a.sentido < 0 ? -1 : 1);
+    if (!a.peaton && !a.caminante && !a.cruzando && !a.enFila) a.modelo.rotation.x = -Math.atan(m.g) * (a.v < 0 || a.sentido < 0 ? -1 : 1);
   }
 
   // Devuelve todos los modelos a la reserva (al reiniciar o al cambiar de partida)
@@ -401,7 +417,7 @@ export class Trafico {
     this.tSubida -= dt;
     if (this.tSubida <= 0) {
       const urbana = this.nivel2 && ["ciudad", "sanIsidro", "chorrillos"].includes(p.barrio(veh.s));
-      this.tSubida = urbana ? 2 + Math.random() * 2 : carrera ? 3 + Math.random() * 5 : 4 + Math.random() * 7;
+      this.tSubida = urbana ? 1.1 + Math.random() * 1.2 : carrera ? 3 + Math.random() * 5 : 4 + Math.random() * 7;
       const s = base() + 180 + Math.random() * 60;
       if (s < p.meta - 20) {
         const r = Math.random();
@@ -425,7 +441,7 @@ export class Trafico {
       this.tLento -= dt;
       if (this.tLento <= 0) {
         const urbana = this.nivel2 && ["ciudad", "sanIsidro", "chorrillos"].includes(p.barrio(veh.s));
-        this.tLento = urbana ? 6 + Math.random() * 4 : 14 + Math.random() * 14;
+        this.tLento = urbana ? 3.2 + Math.random() * 2.6 : 14 + Math.random() * 14;
         const s = veh.s + 140;
         if (s < p.meta - 60) {
           const r = Math.random();
@@ -470,7 +486,7 @@ export class Trafico {
       if (!a.chocado) {
         const alcance = a.rival ? ALCANCE_RIVAL : ALCANCE_AGENTE;
         const dx = a.modelo.position.x - enMundo.x, dz = a.modelo.position.z - enMundo.z;
-        a.modelo.visible = dx * dx + dz * dz < alcance * alcance && !(a.cruzando && a.esperando);
+        a.modelo.visible = dx * dx + dz * dz < alcance * alcance;
       }
 
       // Colisión con el jugador (cajas en s/d)
@@ -490,7 +506,7 @@ export class Trafico {
     // Retirar lo que quedó muy atrás (los rivales siguen en la clasificación)
     let restantes = 0;
     for (const a of this.agentes) {
-      const fuera = !a.rival && (a.s < veh.s - 60 || a.s > p.largo || a.retirar);
+      const fuera = !a.rival && (a.s < veh.s - 60 || a.s > p.largo || a.retirar || (a.ciclista && a.s > p.meta));
       if (fuera) reserva.devolver(a.modelo, modelos.liberarRecursos);
       else this.agentes[restantes++] = a;
     }

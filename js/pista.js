@@ -1,5 +1,5 @@
-import * as THREE from "./three.js?v=1.7.3";
-import { nivelDe } from "./niveles.js?v=1.7.3";
+import * as THREE from "./three.js?v=1.8.1";
+import { nivelDe } from "./niveles.js?v=1.8.1";
 
 // Calle en bajada generada por tramos. Se recorre en coordenadas de Frenet:
 // s = metros a lo largo de la calle, d = desplazamiento lateral (+ derecha).
@@ -30,6 +30,10 @@ function tenir(buf, hex) {
   while (buf.col.length < buf.pos.length) buf.col.push(r, g, b);
 }
 const FONDO_TECHO = 7;
+const MEDIA_BOCA = 7;            // m de la calle transversal entre esquinas, a cada lado de su eje
+const CALZADA_BOCA = 4;          // m de su calzada a cada lado del eje; el resto es vereda
+const LARGO_BOCA = 40;           // m que se ve de la transversal antes de la fachada que la cierra
+const ALTO_BOCA = 0.035;         // asfalto de la transversal sobre la vereda rebajada (0,02)
 const JARDIN_ALTO = 0.6;         // jardines y parques: tierra elevada sobre la calzada, tras un murete
 const BERMA = 2;                 // franja de tierra entre la trocha y la pirca
 const LARGO_TIERRA = 540;        // primera parte: cerro alto sin pista
@@ -161,6 +165,7 @@ export class Pista {
     this.vereda = this.nivel.vereda;
     this.fondo = this.nivel.fondo;
     this.carril = this.nivel.carril;
+    this.semilla = semilla;
     this.rand = rng(semilla);
     this._muestraMundo = {};
     this._muestraAltura = {};
@@ -194,14 +199,23 @@ export class Pista {
       for (const t of tramos) {
         const s0 = this.tramosPuestos.length === 0 ? 0 : total, fin = s0 + t.largo;
         if (t.arena) this.meta = this.finCalle = total;
+        let ultimaRecta = total, trasRecta = false;
         while (total < fin - 1) {
           const resto = Math.round(fin - total), g = t.g + r() * (t.gVar || 0), fis = t.gFis ?? g;
-          if (resto >= 40 && r() < t.curvas) {
-            const R = t.rMin + r() * (t.rMax - t.rMin), ang = 0.25 + r() * 0.4, sg = signo(ang);
+          // Recta reservada para abrir una calle transversal: si no, tanta curva las deja sin sitio
+          if (t.rectaBoca && total - ultimaRecta >= t.rectaBoca && resto >= 110) {
+            add(110, 0, g, "", fis, t.barrio);
+            ultimaRecta = total;
+            trasRecta = true;
+            continue;
+          }
+          if (resto >= 40 && t.curvas > 0 && (trasRecta || r() < t.curvas)) {   // nunca dos rectas seguidas
+            trasRecta = false;
+            const R = t.rMin + r() * (t.rMax - t.rMin), ang = 0.3 + r() * ((t.angMax ?? 0.65) - 0.3), sg = signo(ang);
             const largo = Math.min(resto, Math.round(R * ang));
             add(largo, sg / R, g, "curva", fis, t.barrio);
             rumbo += sg * largo / R;
-          } else add(Math.min(resto, Math.round(50 + r() * 90)), 0, g, t.arena ? "avenida" : "", fis, t.barrio);
+          } else { trasRecta = true; add(Math.min(resto, Math.round(30 + r() * ((t.rectaMax ?? 140) - 30))), 0, g, t.arena ? "avenida" : "", fis, t.barrio); }
         }
         this.tramosPuestos.push({ ...t, s0, s1: total });
       }
@@ -447,8 +461,38 @@ export class Pista {
     return avance < 0.34 ? "ladera" : avance < 0.72 ? "vecindario" : "avenida";
   }
 
-  // Perfil compartido por la malla y las consultas de suelo.
+  // Bocacalle que ocupa el punto s de la calle, si hay una a menos de `margen` de su eje
+  bocaEn(s, margen = MEDIA_BOCA) { return this.bocacalles.find((b) => Math.abs(s - b.s) < margen); }
+
+  // Calles transversales de ciudad y San Isidro. Azar propio: cada nivel 1 sigue idéntico
+  // y el worker, con la misma semilla, abre las mismas.
+  generarBocacalles() {
+    this.bocacalles = [];
+    const urbanos = (this.tramosPuestos || []).filter((t) => t.barrio === "ciudad" || t.barrio === "sanIsidro");
+    if (!urbanos.length) return;
+    const fin = urbanos[urbanos.length - 1].s1 - 70;
+    // Se prefieren rectas; si la ruta salió muy curva se acepta una curva abierta, para que nunca falten
+    for (const tolerancia of [0.005, 0.009, 0.013]) {
+      const azar = rng((this.semilla ^ 0x5bd1e995) | 0);
+      const recta = (s) => [-40, -20, 0, 20, 40].every((x) => Math.abs(this.k[Math.round((s + x) / PASO)]) < tolerancia);
+      this.bocacalles = [];
+      for (let s = 190; s < fin;) {
+        if (!recta(s)) { s += 10; continue; }
+        this.bocacalles.push({ s: Math.round(s) });
+        s += 180 + azar() * 120;
+      }
+      if (this.bocacalles.length >= 4) return;
+    }
+  }
+
+  // Perfil compartido por la malla y las consultas de suelo. En la bocacalle la vereda se rebaja.
   alturaVereda(s, lado) {
+    const h = this.alturaVeredaBase(s, lado), b = this.bocaEn(s, CALZADA_BOCA + 1);
+    if (!b) return h;
+    return 0.02 + (h - 0.02) * Math.max(0, Math.abs(s - b.s) - CALZADA_BOCA);
+  }
+
+  alturaVeredaBase(s, lado) {
     const m = this.muestra(s, this._muestraAltura);
     const tipo = this.tipoVereda(s, lado);
     const tramo = s - this.finTierra + (lado < 0 ? 17 : 0);
@@ -530,6 +574,7 @@ export class Pista {
       return alturas;
     });
 
+    this.generarBocacalles();
     this.baches = [];
     for (let s = 30; s < this.finCalle - 70; s += (12 + r() * 30) / this.nivel.deterioro) {
       this.baches.push({ s, d: (r() - 0.5) * (this.ancho - 1.2), r: 0.3 + r() * 0.4 });
@@ -555,6 +600,8 @@ export class Pista {
       while (s < this.largo + 5) {
         const mir = lado === 1 && this.miradores.find((m) => s + 10 > m.s0 && s < m.s1);
         if (mir) { s = mir.s1; continue; }
+        const boca = this.bocaEn(s + 0.01);
+        if (boca) { s = boca.s + MEDIA_BOCA; continue; }
         const barrio = this.barrio(s);
         const reglas = this.nivel.barrios && this.nivel.barrios[barrio];
         if (reglas) { s = this.loteNivel(lado, s, barrio, reglas); continue; }
@@ -587,7 +634,10 @@ export class Pista {
       }
     }
     this.postes = [];
-    for (let s = 10; s < this.largo; s += 30 + r() * 10) this.postes.push({ s, lado: r() < 0.5 ? -1 : 1 });
+    for (let s = 10; s < this.largo; s += 30 + r() * 10) {
+      const poste = { s, lado: r() < 0.5 ? -1 : 1 };
+      if (!this.bocaEn(s, MEDIA_BOCA + 2)) this.postes.push(poste);
+    }
     // Posición de cada foco, para las luces dinámicas de noche
     this.lamparas = this.postes.map((p) =>
       this.aMundo(p.s, p.lado * (this.ancho / 2 - 1.3), (p.s < this.finTierra ? 0.05 : ALTO_VEREDA) + 7.3));
@@ -595,7 +645,7 @@ export class Pista {
     this.rompemuelles = [];
     for (let s = 120; s < this.finCalle - 150; s += 160 + r() * 200) {
       const i = Math.round(s / PASO);
-      if (Math.abs(this.k[i]) < 0.01 && this.g[i] < 0.17 && s > this.finTierra + 20) this.rompemuelles.push(s);
+      if (Math.abs(this.k[i]) < 0.01 && this.g[i] < 0.17 && s > this.finTierra + 20 && !this.bocaEn(s, 20)) this.rompemuelles.push(s);
     }
 
     // Chozas de triplay, madera y estera en el cerro alto
@@ -650,18 +700,99 @@ export class Pista {
     }
   }
 
+  // Calle transversal: asfalto, veredas, paredes con fachada y otra fachada que cierra la vista
+  construirBocacalles(s0, s1, mat, nuevo, malla, fachada) {
+    const lista = this.bocacalles.filter((b) => b.s >= s0 && b.s < s1);
+    if (!lista.length) return;
+    const calle = nuevo(), orilla = nuevo(), marcas = nuevo(), v = new THREE.Vector3();
+    const cuad = (buf, pts) => {     // pts: [s, d, h, u, v] x4 en orden de tira
+      const base = buf.pos.length / 3;
+      for (const [ps, pd, ph, u, w] of pts) {
+        this.aMundo(ps, pd, ph, v);
+        buf.pos.push(v.x, v.y, v.z);
+        buf.uv.push(u, w);
+      }
+      buf.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+    };
+    const pintar = (sa, sb, da, db) => cuad(marcas, [[sa, da, 0.05, 0.1, 0.1], [sa, db, 0.05, 0.1, 0.1], [sb, da, 0.05, 0.1, 0.1], [sb, db, 0.05, 0.1, 0.1]]);
+    const borde = this.ancho / 2 + this.vereda, fin = borde + LARGO_BOCA;
+    // Sobre el suelo, por si el terreno sube en el fondo de la transversal
+    const altura = (s, d) => Math.max(ALTO_BOCA, this.alturaTerreno(s, d) + 0.06);
+    for (const b of lista) {
+      const sa = b.s - CALZADA_BOCA, sb = b.s + CALZADA_BOCA;
+      for (const e of [-1, 1]) for (let k = 0; k < 6; k++) pintar(b.s + e * 8.5 - 1.5, b.s + e * 8.5 + 1.5, -this.ancho / 2 + 0.5 + k * (this.ancho - 1.6) / 5, -this.ancho / 2 + 1.1 + k * (this.ancho - 1.6) / 5);
+      [-1, 1].forEach((sg, lado) => {
+        const tramos = [this.ancho / 2, borde, ...[1, 2, 3, 4, 5].map((k) => borde + k * LARGO_BOCA / 5)];
+        for (let k = 0; k + 1 < tramos.length; k++) {
+          const dA = Math.min(sg * tramos[k], sg * tramos[k + 1]), dB = Math.max(sg * tramos[k], sg * tramos[k + 1]);
+          cuad(calle, [[sa, dA, altura(sa, dA), sa / 4, dA / 4], [sa, dB, altura(sa, dB), sa / 4, dB / 4],
+                       [sb, dA, altura(sb, dA), sb / 4, dA / 4], [sb, dB, altura(sb, dB), sb / 4, dB / 4]]);
+          if (k === 0) continue;
+          for (const e of [-1, 1]) {
+            const dentro = b.s + e * CALZADA_BOCA, fuera = b.s + e * MEDIA_BOCA;
+            const [s1V, s2V] = e < 0 ? [fuera, dentro] : [dentro, fuera];
+            const h = (s, d) => altura(s, d) + ALTO_VEREDA;
+            cuad(orilla, [[s1V, dA, h(s1V, dA), s1V / 2, dA / 2], [s1V, dB, h(s1V, dB), s1V / 2, dB / 2],
+                          [s2V, dA, h(s2V, dA), s2V / 2, dA / 2], [s2V, dB, h(s2V, dB), s2V / 2, dB / 2]]);
+            // Sardinel, por las dos caras: se ve desde ambos sentidos
+            for (const pts of [[dA, dB], [dB, dA]]) cuad(orilla, [[dentro, pts[0], altura(dentro, pts[0]), 0, 0], [dentro, pts[1], altura(dentro, pts[1]), 0.5, 0],
+              [dentro, pts[0], h(dentro, pts[0]), 0, 0.1], [dentro, pts[1], h(dentro, pts[1]), 0.5, 0.1]]);
+          }
+        }
+        // Línea de pare ante la calle principal
+        const pareA = sg * (borde + 0.5), pareB = sg * (borde + 1);
+        pintar(sa + 0.2, sb - 0.2, Math.min(pareA, pareB), Math.max(pareA, pareB));
+        // Paredes de las dos manzanas, de la esquina al fondo
+        const casas = this.casas[lado], dIni = sg * borde, dFin = sg * fin;
+        for (const e of [-1, 1]) {
+          const sEsquina = b.s + e * MEDIA_BOCA, sPared = sEsquina - e * 0.04;
+          const casa = casas.find((c) => Math.abs((e < 0 ? c.s1 : c.s0) - sEsquina) < 0.6 && !c.parque && !c.muro);
+          const alto = casa ? casa.alto : 11.6, u0 = (casa ? casa.tex : (lado * 3 + e + 1) % 8) * CELDA_ATLAS;
+          const [dA, dB] = sg < 0 ? [dFin, dIni] : [dIni, dFin];
+          const cuadPared = (ds, h0, h1) => {
+            const base = fachada.pos.length / 3;
+            for (const [d, h] of [[ds[0], h0], [ds[1], h0], [ds[0], h1], [ds[1], h1]]) {
+              this.aMundo(sPared, d, h, v);
+              fachada.pos.push(v.x, v.y, v.z);
+              fachada.uv.push(u0 + Math.abs(d) / 8, (h - h0) / 8.6);
+            }
+            fachada.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+          };
+          cuadPared([dA, dB], -0.6, alto);
+          tenir(fachada, TINTES_ATLAS[(casa ? casa.pintura : b.s) % 3]);
+        }
+        // Fachada que cierra la calle al fondo
+        const base = fachada.pos.length / 3, u0 = ((b.s + lado) % 8) * CELDA_ATLAS, altoFin = 17;
+        for (const [s, h, w] of [[b.s - MEDIA_BOCA, -0.6, 0], [b.s + MEDIA_BOCA, -0.6, 0], [b.s - MEDIA_BOCA, altoFin, altoFin / 8.6], [b.s + MEDIA_BOCA, altoFin, altoFin / 8.6]]) {
+          this.aMundo(s, dFin, h, v);
+          fachada.pos.push(v.x, v.y, v.z);
+          fachada.uv.push(u0 + (s - b.s + MEDIA_BOCA) / 8, w);
+        }
+        fachada.idx.push(base, base + 1, base + 2, base + 1, base + 3, base + 2);
+        tenir(fachada, TINTES_ATLAS[lado]);
+      });
+    }
+    malla(calle, mat.asfalto);
+    malla(orilla, mat.vereda);
+    malla(marcas, mat.vereda, false);
+  }
+
   // Lote de un nivel con barrios por tabla. Devuelve dónde empieza el siguiente.
   loteNivel(lado, s, barrio, reglas) {
     const r = this.rand;
     if (reglas.sinCasas) return s + 6;
     const entre = ([a, b]) => a + r() * (b - a);
+    // Ningún lote pisa una bocacalle: el último llega justo a la esquina
+    const boca = this.bocacalles.find((b) => b.s - MEDIA_BOCA > s);
+    const hastaEsquina = boca ? boca.s - MEDIA_BOCA - s : Infinity;
+    const ajustar = (largo) => (hastaEsquina < largo + 4 ? hastaEsquina : largo);
     if (s > 30 && r() < reglas.parque) {
-      const largo = reglas.parqueLargo ? entre(reglas.parqueLargo) : 18 + r() * 14;
+      const largo = ajustar(reglas.parqueLargo ? entre(reglas.parqueLargo) : 18 + r() * 14);
       this.casas[lado].push({ s0: s, s1: s + largo, alto: 0, tex: reglas.fachadas[(r() * reglas.fachadas.length) | 0], barrio, muro: false, parque: true,
         altoFondo: 15 + r() * 12, retiro: 0, pintura: (r() * 6) | 0, negocio: -1, semilla: (r() * 1e9) | 0 });
       return s + largo;
     }
-    const ancho = entre(reglas.ancho), pisos = Math.round(entre(reglas.pisos)), muro = r() < reglas.muro;
+    const ancho = ajustar(entre(reglas.ancho)), pisos = Math.round(entre(reglas.pisos)), muro = r() < reglas.muro;
     const negocio = !muro && r() < reglas.negocio ? (r() * 4) | 0 : -1;
     this.casas[lado].push({
       s0: s, s1: s + ancho, alto: muro ? 1.7 + r() * 0.6 : pisos * 2.8 + 0.2 + r() * 0.3,
@@ -969,6 +1100,7 @@ export class Pista {
         tenir(pared, TINTES_PARED[casa.pintura]);
       }
     });
+    this.construirBocacalles(s0, s1, mat, nuevo, malla, fachada);
     malla(fachada, conAtlas ? mat.fachadaN2 : mat.fachada);
     malla(vitrinas, mat.vitrinas, false);
     malla(carteles, mat.letrerosN2, false);
@@ -1468,6 +1600,8 @@ export class Pista {
     const c = lienzo.getContext("2d");
     c.fillStyle = "#c8102e"; c.fillRect(0, 0, 512, 96);
     c.fillStyle = "#ffd200"; c.font = "bold 54px sans-serif"; c.textAlign = "center"; c.textBaseline = "middle";
+    // Los nombres largos se achican para que entren en el cartel
+    c.font = `bold ${Math.floor(54 * Math.min(1, 480 / c.measureText(this.nivel.textoArco).width))}px sans-serif`;
     c.fillText(this.nivel.textoArco, 256, 50);
     const tex = new THREE.CanvasTexture(lienzo);
     tex.colorSpace = THREE.SRGBColorSpace;

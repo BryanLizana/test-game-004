@@ -9,7 +9,7 @@ export const NIVELES = {
   },
   2: {
     id: 2, ancho: 10.5, vereda: 2.4, fondo: 10, carril: 2.6, terreno: "llano", costa: true,
-    deterioro: 0.3, rugosidad: 0.5, rocePlaya: 3, veredaLisa: true,
+    deterioro: 0.3, rugosidad: 1, rocePlaya: 3, veredaLisa: true,
     textoArco: "PLAYA AGUA DULCE",
     avisoInicio: "¡Oh no, ahora el acelerador se trabó!",
     velocidadTrabada: 60 / 3.6, // m/s: el motor recupera 60 km/h después de frenar
@@ -17,11 +17,11 @@ export const NIVELES = {
     // g: lo que se ve. gFis: lo que empuja a la moto (el acelerador trabado). Sin gFis, empuja la bajada real.
     // La suma de los largos es 2.800 m; la meta cae donde empieza el tramo con arena.
     tramos: [
-      { barrio: "ciudad", largo: 600, g: 0.03, gFis: 0.12, curvas: 0.35, rMin: 70, rMax: 160 },
-      { barrio: "sanIsidro", largo: 900, g: 0.015, gFis: 0.165, curvas: 0.3, rMin: 70, rMax: 150 },
-      { barrio: "chorrillos", largo: 200, g: 0.04, gFis: 0.165, curvas: 0.45, rMin: 60, rMax: 90 },
-      { barrio: "bajada", largo: 450, g: 0.18, gVar: 0.06, curvas: 0.5, rMin: 75, rMax: 110, mirador: "tramos" },
-      { barrio: "malecon", largo: 500, g: 0.01, gFis: 0.14, curvas: 0.25, rMin: 120, rMax: 200, mirador: "corrido" },
+      { barrio: "ciudad", largo: 600, g: 0.03, gFis: 0.12, curvas: 0.72, rMin: 42, rMax: 72, angMax: 1.1, rectaMax: 70, rectaBoca: 120 },
+      { barrio: "sanIsidro", largo: 900, g: 0.015, gFis: 0.165, curvas: 0.68, rMin: 42, rMax: 78, angMax: 1.05, rectaMax: 75, rectaBoca: 130 },
+      { barrio: "chorrillos", largo: 200, g: 0.04, gFis: 0.165, curvas: 0.8, rMin: 42, rMax: 62, angMax: 1.05, rectaMax: 50 },
+      { barrio: "bajada", largo: 450, g: 0.18, gVar: 0.06, curvas: 0.85, rMin: 60, rMax: 84, angMax: 1.15, rectaMax: 45, mirador: "tramos" },
+      { barrio: "malecon", largo: 500, g: 0.01, gFis: 0.14, curvas: 0.65, rMin: 50, rMax: 90, angMax: 0.95, rectaMax: 70, mirador: "corrido" },
       { barrio: "playa", largo: 150, g: 0.03, gFis: 0.03, curvas: 0, arena: true },
     ],
     // Reglas de lote por barrio: rangos [mínimo, máximo] y probabilidades
@@ -37,11 +37,11 @@ export const NIVELES = {
     // El Corredor Azul solo anda por ciudad y San Isidro: de la bajada en adelante no hay buses.
     trafico: {
       estacionados: [["carro", 1]],
-      suben: [["carro", 0.75], ["combi", 0.25]],
-      bajan: [["carro", 0.7], ["combi", 0.3]],
+      suben: [["carro", 0.85], ["combi", 0.15]],
+      bajan: [["carro", 0.85], ["combi", 0.15]],
       porBarrio: {
-        ciudad: { suben: [["carro", 0.55], ["combi", 0.15], ["busAzul", 0.3]], bajan: [["carro", 0.45], ["combi", 0.15], ["busAzul", 0.4]] },
-        sanIsidro: { suben: [["carro", 0.65], ["busAzul", 0.35]], bajan: [["carro", 0.55], ["busAzul", 0.45]] },
+        ciudad: { suben: [["carro", 0.72], ["combi", 0.1], ["busAzul", 0.18]], bajan: [["carro", 0.68], ["combi", 0.1], ["busAzul", 0.22]] },
+        sanIsidro: { suben: [["carro", 0.82], ["busAzul", 0.18]], bajan: [["carro", 0.78], ["busAzul", 0.22]] },
       },
       animales: false, obras: false,
     },
