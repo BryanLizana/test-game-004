@@ -1,18 +1,18 @@
 import * as THREE from "three";
-import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.3";
+import { uniformesCielo, conNieblaCielo } from "./niebla.js?v=1.8.4";
 import { mergeGeometries } from "three/addons/utils/BufferGeometryUtils.js";
-import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.3";
-import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.3";
-import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.3";
-import { armarDecorado } from "./decorado-nivel2.js?v=1.8.3";
-import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.3";
-import { crearKolas } from "./kolas.js?v=1.8.3";
-import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.3";
-import { Trafico } from "./trafico.js?v=1.8.3";
-import { Controles } from "./controles.js?v=1.8.3";
-import { Sonido } from "./audio.js?v=1.8.3";
-import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.3";
-import { crearLetreros } from "./ambiente.js?v=1.8.3";
+import { Pista, ANCHO, CELDA_ATLAS } from "./pista.js?v=1.8.4";
+import { GestorTramos, partesDeChozas } from "./tramos.js?v=1.8.4";
+import { Vehiculo, FRENO_TANQUE, FRENO_ESPERA } from "./vehiculo.js?v=1.8.4";
+import { armarDecorado } from "./decorado-nivel2.js?v=1.8.4";
+import { crearPasoUrbano } from "./paso-urbano.js?v=1.8.4";
+import { crearKolas } from "./kolas.js?v=1.8.4";
+import { crearImitadores, precargarImitadores } from "./imitadores.js?v=1.8.4";
+import { Trafico } from "./trafico.js?v=1.8.4";
+import { Controles } from "./controles.js?v=1.8.4";
+import { Sonido } from "./audio.js?v=1.8.4";
+import { crearTorito, liberarRecursos } from "./modelos.js?v=1.8.4";
+import { crearLetreros } from "./ambiente.js?v=1.8.4";
 
 const elementos = new Map();
 const $ = (id) => {
@@ -384,7 +384,8 @@ function vestirNivel() {
   for (const c of CAMBIOS_N2) {
     const m = c.cielo ? cieloMat : c.material;
     if (n2 && c.mapa && m.map !== c.mapa) { c.base = m.map; c.colorBase = m.color.clone(); m.map = c.mapa; m.needsUpdate = true; }
-    if (!n2 && "base" in c && m.map === c.mapa) { m.map = c.base; m.color.copy(c.colorBase); m.needsUpdate = true; }
+    // El color del cielo depende de la hora elegida: el guardado puede ser de la otra hora
+    if (!n2 && "base" in c && m.map === c.mapa) { m.map = c.base; if (c.cielo) m.color.set(m.map ? m.userData.tinte : escena.background); else m.color.copy(c.colorBase); m.needsUpdate = true; }
     if (c.cielo) {
       uniformesCielo.cieloNiebla.value = m.map;
       uniformesCielo.cieloListo.value = m.map ? 1 : 0;
